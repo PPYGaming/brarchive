@@ -1,0 +1,2897 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BRArchive Studio — Minecraft Bedrock Archive Converter & Inspector</title>
+  <!-- v1.3 (2026-10-21): byte-exact match with the official BDS 1.26.51.1 pack optimizer output (verified 40/40 on Aura Outline 0.0.206): subpacks archived (subpacks/<name>/__brarchive/), 16-byte empty archives for file-less dirs, textures embedded (loose set = root files + materials/ + texts/ only), textual JSON minify preserving number literals, manifest minified with stamp appended at header end.
+     v1.2 (2026-10-21): removed repo-template download card + exporter (his request); added copyright footer. LICENCE file ships separately for repo root.
+     v1.1 (2026-10-21): fixed .brarchive magic byte order (real bytes 7D 27 25 B1 A0 52 70 26); official 1.26.40+ optimizer layout (keep-loose folders + 0-byte stubs, subpacks loose); manifest auto-stamped with pack_optimization_version 0.1.0; output named from manifest; already-optimized input warning -->
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- JSZip for client-side .zip / .mcpack / .mcaddon processing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          },
+          colors: {
+            bedrock: {
+              950: '#090d11',
+              900: '#0f161e',
+              800: '#16202b',
+              700: '#1f2d3d',
+              600: '#2c3f54',
+              emerald: '#10b981',
+              neon: '#38e54d',
+              amber: '#f59e0b',
+              red: '#ef4444'
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Custom Scrollbars & Bedrock UI Polish */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d11;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2c3f54;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #10b981;
+    }
+    .mc-grid-bg {
+      background-color: #090d11;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 35%),
+        radial-gradient(circle at 85% 80%, rgba(56, 229, 77, 0.05) 0%, transparent 40%),
+        linear-gradient(to right, rgba(44, 63, 84, 0.12) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(44, 63, 84, 0.12) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
+    }
+    .pixel-border {
+      box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.08), 0 4px 14px rgba(0,0,0,0.45);
+    }
+    .drop-zone-active {
+      border-color: #38e54d !important;
+      background-color: rgba(16, 185, 129, 0.12) !important;
+    }
+  </style>
+</head>
+<body class="mc-grid-bg text-slate-100 font-sans min-h-screen flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+
+  <!-- Top Navigation & Status Header -->
+  <header class="sticky top-0 z-30 bg-bedrock-950/90 backdrop-blur-md border-b border-bedrock-700/80">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand Identity -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-green-700 p-0.5 shadow-lg shadow-emerald-950/60 flex items-center justify-center">
+          <div class="w-full h-full bg-bedrock-950/90 rounded-[6px] flex items-center justify-center">
+            <!-- Cube Icon -->
+            <svg class="w-6 h-6 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">Bedrock <span class="text-emerald-400 font-mono">__brarchive</span> Converter</h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">v1 Spec Verified</span>
+          </div>
+          <p class="text-xs text-slate-400">100% Local In-Browser Binary Unpacker, Compiler & MCB Inspector</p>
+        </div>
+      </div>
+
+      <!-- Privacy Badge & Quick Actions -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bedrock-900 border border-bedrock-700 text-xs text-slate-300" title="Zero server uploads. All archive parsing happens locally in browser memory.">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Local Sandbox Active</span>
+        </div>
+
+        <button id="btnLoadSampleTop" onclick="app.loadVerifiedSamplePack()" class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs sm:text-sm font-medium transition flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          <span>Load Verified Sample Pack</span>
+        </button>
+
+        <button onclick="app.clearWorkspace()" class="px-2.5 py-1.5 rounded-lg bg-bedrock-800 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-bedrock-700 hover:border-red-700/50 text-xs sm:text-sm transition flex items-center gap-1" title="Clear all loaded files">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <span class="hidden sm:inline">Clear</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 flex overflow-x-auto no-scrollbar border-t border-bedrock-800/80 bg-bedrock-900/50">
+      <button onclick="app.switchTab('decode')" id="tabBtn-decode" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-emerald-400 text-emerald-300 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>1. BRArchive → Readable</span>
+        <span id="badgeDecodeCount" class="px-1.5 py-0.2 rounded-full text-[11px] bg-emerald-500/20 text-emerald-300 font-mono">0</span>
+      </button>
+
+      <button onclick="app.switchTab('encode')" id="tabBtn-encode" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>2. Readable → BRArchive</span>
+      </button>
+
+      <button onclick="app.switchTab('tests')" id="tabBtn-tests" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>3. Validation & Automated Tests (12)</span>
+      </button>
+
+      <button onclick="app.switchTab('specs')" id="tabBtn-specs" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>4. Spec & Security</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Conversion Progress Bar (Hidden when idle) -->
+  <div id="progressContainer" class="hidden bg-bedrock-900 border-b border-bedrock-700 px-4 py-2">
+    <div class="max-w-7xl mx-auto flex items-center gap-3">
+      <span id="progressLabel" class="text-xs font-mono text-emerald-300 whitespace-nowrap">Processing...</span>
+      <div class="w-full bg-bedrock-950 rounded-full h-2 overflow-hidden border border-bedrock-700">
+        <div id="progressBar" class="bg-gradient-to-r from-emerald-500 to-green-400 h-full transition-all duration-200" style="width: 0%"></div>
+      </div>
+      <span id="progressPercent" class="text-xs font-mono text-slate-400">0%</span>
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5 space-y-6">
+
+    <!-- =====================================================================
+         TAB 1: BRARCHIVE TO READABLE FORMAT
+         ===================================================================== -->
+    <section id="tabPanel-decode" class="space-y-5">
+      <!-- Top Row: Upload Dropzone + Format Detection & Security Inspector -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        <!-- File Upload Area (7 cols) -->
+        <div id="decodeDropZone" class="lg:col-span-7 rounded-xl bg-bedrock-900/90 border-2 border-dashed border-bedrock-600 hover:border-emerald-500/60 transition p-5 flex flex-col justify-between pixel-border">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                Input Container / Pack
+              </span>
+              <span class="text-[11px] text-slate-400 font-mono">Magic: 0x267052A0B125277D (v1)</span>
+            </div>
+            <h2 class="text-base sm:text-lg font-semibold text-white">Upload <code class="text-emerald-300 font-mono">.brarchive</code>, <code class="text-emerald-300 font-mono">.mcpack</code>, <code class="text-emerald-300 font-mono">.mcaddon</code>, or <code class="text-emerald-300 font-mono">.zip</code></h2>
+            <p class="text-xs sm:text-sm text-slate-400 mt-1">
+              Drag and drop standalone <code class="font-mono text-slate-300">.brarchive</code> binaries or full Bedrock server/client packs containing a <code class="font-mono text-slate-300">__brarchive/</code> folder. Android & iOS file pickers supported.
+            </p>
+          </div>
+
+          <div class="mt-4 flex flex-wrap items-center gap-2.5">
+            <!-- Standard File Input (Mobile & Desktop friendly) -->
+            <label class="cursor-pointer px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-semibold text-xs sm:text-sm transition shadow-lg shadow-emerald-950/50 flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Browse Files (.brarchive / .zip / .mcpack)</span>
+              <input id="inputDecodeFiles" type="file" multiple accept="*/*,.brarchive,.zip,.mcpack,.mcaddon,.json" class="hidden" onchange="app.handleDecodeFileInput(this.files)" />
+            </label>
+
+            <!-- Directory Input for PC Server Admins -->
+            <label class="cursor-pointer px-3.5 py-2.5 rounded-lg bg-bedrock-800 hover:bg-bedrock-700 text-slate-200 border border-bedrock-600 text-xs sm:text-sm font-medium transition flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span>Upload Pack Folder</span>
+              <input id="inputDecodeFolder" type="file" webkitdirectory directory multiple class="hidden" onchange="app.handleDecodeFileInput(this.files)" />
+            </label>
+
+            <button onclick="app.loadVerifiedSamplePack()" class="px-3.5 py-2.5 rounded-lg bg-bedrock-800/80 hover:bg-emerald-950/60 text-emerald-300 border border-emerald-500/30 text-xs sm:text-sm font-medium transition">
+              Try Sample Bedrock Pack
+            </button>
+          </div>
+
+          <!-- Extraction Options Bar -->
+          <div class="mt-4 pt-3 border-t border-bedrock-800 flex flex-wrap items-center gap-4 text-xs text-slate-300">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" id="chkPrettyJson" checked onchange="app.refreshDecodedWorkspace()" class="rounded bg-bedrock-950 border-bedrock-600 text-emerald-500 focus:ring-0" />
+              <span>Pretty-print extracted JSON (2 spaces)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" id="chkStripBrarchiveOnZip" checked class="rounded bg-bedrock-950 border-bedrock-600 text-emerald-500 focus:ring-0" />
+              <span>Remove <code class="font-mono text-emerald-400">__brarchive/</code> folder when exporting readable ZIP</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Format-Detection & Container Telemetry Panel (5 cols) -->
+        <div class="lg:col-span-5 rounded-xl bg-bedrock-900/90 border border-bedrock-700 p-4 flex flex-col justify-between pixel-border">
+          <div>
+            <div class="flex items-center justify-between border-b border-bedrock-800 pb-2.5 mb-3">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <h3 class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-slate-200">Format Detection & Telemetry</h3>
+              </div>
+              <span id="detectorStatusBadge" class="px-2 py-0.5 rounded text-[11px] font-mono bg-bedrock-800 text-slate-400">Awaiting Input</span>
+            </div>
+
+            <!-- Telemetry Metrics Grid -->
+            <div class="grid grid-cols-2 gap-2.5 text-xs font-mono">
+              <div class="p-2.5 rounded-lg bg-bedrock-950/80 border border-bedrock-800">
+                <div class="text-slate-400 text-[11px]">Detected Signature</div>
+                <div id="statSignature" class="text-emerald-300 font-semibold mt-0.5 truncate">—</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-bedrock-950/80 border border-bedrock-800">
+                <div class="text-slate-400 text-[11px]">BRArchive Containers</div>
+                <div id="statArchiveCount" class="text-white font-semibold mt-0.5">0 archives (0 entries)</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-bedrock-950/80 border border-bedrock-800">
+                <div class="text-slate-400 text-[11px]">Extracted Files</div>
+                <div id="statFileBreakdown" class="text-slate-200 font-semibold mt-0.5">0 readable / 0 MCB</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-bedrock-950/80 border border-bedrock-800">
+                <div class="text-slate-400 text-[11px]">Security & Path Guard</div>
+                <div id="statSecurityGuard" class="text-emerald-400 font-semibold mt-0.5">0 violations</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons for Export -->
+          <div class="mt-4 pt-3 border-t border-bedrock-800 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <label for="selectExportExt" class="text-xs text-slate-400">Format:</label>
+              <select id="selectExportExt" class="bg-bedrock-950 border border-bedrock-700 rounded-lg px-2 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500">
+                <option value="zip">.zip (Standard Archive)</option>
+                <option value="mcpack">.mcpack (Bedrock Pack)</option>
+                <option value="mcaddon">.mcaddon (Bedrock Add-On)</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="app.transferToEncoder()" id="btnSendToEncoder" disabled class="px-3 py-1.5 rounded-lg bg-bedrock-800 hover:bg-bedrock-700 disabled:opacity-40 disabled:pointer-events-none text-xs font-medium text-slate-200 border border-bedrock-600 transition" title="Send extracted readable files to the BRArchive Compiler tab">
+                Send to Compiler →
+              </button>
+              <button onclick="app.downloadConvertedZip()" id="btnDownloadReadableZip" disabled class="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-semibold text-xs sm:text-sm transition flex items-center gap-1.5 shadow-md">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Download Converted ZIP</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workspace Split Pane: File-Tree Explorer (Left) + Preview/Editor/Hex Inspector (Right) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-[540px]">
+        
+        <!-- Left Pane: File-Tree Explorer (4 cols) -->
+        <div class="lg:col-span-4 rounded-xl bg-bedrock-900/95 border border-bedrock-700 flex flex-col overflow-hidden pixel-border">
+          <div class="p-3 border-b border-bedrock-800 flex items-center justify-between gap-2 bg-bedrock-950/60">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span class="text-xs sm:text-sm font-semibold text-slate-200">File-Tree Explorer</span>
+            </div>
+            <!-- View Filter Pills -->
+            <div class="flex rounded-lg bg-bedrock-900 p-0.5 border border-bedrock-700 text-[11px]">
+              <button id="treeFilterAll" onclick="app.setTreeFilter('extracted')" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-medium">Readable</button>
+              <button id="treeFilterRaw" onclick="app.setTreeFilter('raw')" class="px-2 py-0.5 rounded text-slate-400 hover:text-slate-200">Raw .brarchive</button>
+            </div>
+          </div>
+
+          <!-- Search Input -->
+          <div class="p-2.5 border-b border-bedrock-800 bg-bedrock-900/50">
+            <div class="relative">
+              <input id="inputTreeSearch" type="text" oninput="app.renderFileTree()" placeholder="Filter files (e.g. .json, entity, manifest)..." class="w-full bg-bedrock-950 border border-bedrock-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono" />
+              <svg class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+          </div>
+
+          <!-- Tree List Container -->
+          <div id="fileTreeContainer" class="flex-1 overflow-y-auto p-2 space-y-0.5 font-mono text-xs max-h-[460px] lg:max-h-[520px]">
+            <div class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+              <svg class="w-10 h-10 mb-2 text-bedrock-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <p class="text-xs font-sans text-slate-400">No files loaded yet.</p>
+              <p class="text-[11px] font-sans text-slate-500 mt-1">Upload a <code class="text-emerald-400">.brarchive</code> or click <strong>"Load Verified Sample Pack"</strong> above to inspect and edit files.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Pane: Multi-Mode File Inspector, Live Editor & Hex Viewer (8 cols) -->
+        <div class="lg:col-span-8 rounded-xl bg-bedrock-900/95 border border-bedrock-700 flex flex-col overflow-hidden pixel-border">
+          <!-- Inspector Header -->
+          <div class="p-3 border-b border-bedrock-800 bg-bedrock-950/60 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span id="previewFileBadge" class="px-2 py-0.5 rounded text-[11px] font-mono bg-bedrock-800 text-emerald-300 border border-bedrock-700">NONE</span>
+              <h3 id="previewFilePath" class="text-xs sm:text-sm font-mono text-slate-200 truncate">Select a file from the explorer</h3>
+            </div>
+
+            <!-- Mode Switcher & File Actions -->
+            <div class="flex flex-wrap items-center gap-1.5">
+              <div class="flex rounded-lg bg-bedrock-900 p-0.5 border border-bedrock-700 text-xs">
+                <button id="btnViewText" onclick="app.setInspectorMode('text')" class="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 font-medium transition">Text / Editor</button>
+                <button id="btnViewHex" onclick="app.setInspectorMode('hex')" class="px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition">Hex & Header</button>
+              </div>
+
+              <button id="btnFormatJson" onclick="app.formatActiveEditorJson(false)" class="hidden px-2.5 py-1 rounded-lg bg-bedrock-800 hover:bg-bedrock-700 text-xs text-slate-200 border border-bedrock-600 transition" title="Pretty-print JSON">
+                Beautify
+              </button>
+              <button id="btnMinifyJson" onclick="app.formatActiveEditorJson(true)" class="hidden px-2.5 py-1 rounded-lg bg-bedrock-800 hover:bg-bedrock-700 text-xs text-slate-200 border border-bedrock-600 transition" title="Minify JSON">
+                Minify
+              </button>
+              <button id="btnSaveEdits" onclick="app.saveActiveFileEdits()" class="hidden px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-semibold text-xs transition">
+                Save Edit
+              </button>
+              <button id="btnDownloadSingle" onclick="app.downloadActiveFile()" disabled class="px-2.5 py-1 rounded-lg bg-bedrock-800 hover:bg-bedrock-700 disabled:opacity-40 disabled:pointer-events-none text-xs text-emerald-300 border border-bedrock-600 transition flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Download File</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Context Banner (shows provenance, e.g. extracted from __brarchive/entities.brarchive @ offset 0x0410, or MCB binary notice) -->
+          <div id="previewMetaBanner" class="hidden px-3.5 py-2 bg-bedrock-950/90 border-b border-bedrock-800 text-xs font-mono text-slate-400 flex flex-wrap items-center justify-between gap-2">
+            <span id="previewProvenanceText">Origin: —</span>
+            <span id="previewValidationBadge" class="text-emerald-400">Valid UTF-8</span>
+          </div>
+
+          <!-- Editor / Hex Body -->
+          <div class="flex-1 relative flex flex-col min-h-[420px]">
+            <!-- Text Editor View -->
+            <div id="inspectorTextPane" class="flex-1 flex flex-col">
+              <textarea id="codeEditorTextarea" spellcheck="false" placeholder="Select a file on the left to inspect or edit its contents..." class="w-full flex-1 bg-bedrock-950/90 text-slate-100 font-mono text-xs sm:text-[13px] leading-relaxed p-4 focus:outline-none resize-none"></textarea>
+            </div>
+
+            <!-- Hex & Binary Structure Inspector View -->
+            <div id="inspectorHexPane" class="hidden flex-1 flex-col overflow-y-auto p-4 space-y-4 bg-bedrock-950/95 font-mono text-xs">
+              <div id="binaryStructCard" class="p-3.5 rounded-lg bg-bedrock-900 border border-bedrock-700 space-y-2"></div>
+              <div>
+                <div class="text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span>Raw Byte Hex Dump (First 2,048 bytes shown)</span>
+                  <span id="hexByteLengthLabel" class="text-emerald-400">0 bytes</span>
+                </div>
+                <pre id="hexDumpOutput" class="p-3 rounded-lg bg-bedrock-900/90 border border-bedrock-800 text-slate-300 overflow-x-auto leading-relaxed text-[11px] sm:text-xs"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         TAB 2: READABLE FORMAT TO BRARCHIVE COMPILER
+         ===================================================================== -->
+    <section id="tabPanel-encode" class="hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        
+        <!-- Left Column: Source Upload & Compiler Settings (5 cols) -->
+        <div class="lg:col-span-5 space-y-4">
+          <div id="encodeDropZone" class="rounded-xl bg-bedrock-900/90 border-2 border-dashed border-bedrock-600 hover:border-emerald-500/60 p-5 transition pixel-border">
+            <span class="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold">Readable Source Input</span>
+            <h2 class="text-base sm:text-lg font-semibold text-white mt-1">Pack Readable Files into <code class="text-emerald-300 font-mono">.brarchive</code></h2>
+            <p class="text-xs text-slate-400 mt-1">
+              Upload a readable <code class="font-mono text-slate-300">.zip</code>, <code class="font-mono text-slate-300">.mcpack</code>, folder, or individual JSON/asset files — or import directly from your current workspace.
+            </p>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <label class="cursor-pointer px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-semibold text-xs sm:text-sm transition flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Select ZIP / Files</span>
+                <input type="file" multiple accept="*/*,.zip,.mcpack,.mcaddon,.json" class="hidden" onchange="app.handleEncodeFileInput(this.files)" />
+              </label>
+
+              <label class="cursor-pointer px-3 py-2 rounded-lg bg-bedrock-800 hover:bg-bedrock-700 text-slate-200 border border-bedrock-600 text-xs sm:text-sm transition">
+                <span>Select Folder</span>
+                <input type="file" webkitdirectory directory multiple class="hidden" onchange="app.handleEncodeFileInput(this.files)" />
+              </label>
+
+              <button onclick="app.importFromDecodedWorkspace()" class="px-3 py-2 rounded-lg bg-bedrock-800 hover:bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 text-xs sm:text-sm transition">
+                Use Current Workspace Files
+              </button>
+            </div>
+          </div>
+
+          <!-- Compiler Options Card -->
+          <div class="rounded-xl bg-bedrock-900/90 border border-bedrock-700 p-4 space-y-3.5 pixel-border">
+            <h3 class="text-xs sm:text-sm font-semibold uppercase tracking-wider text-slate-200 border-b border-bedrock-800 pb-2">
+              BRArchive v1 Compiler Configuration
+            </h3>
+
+            <div>
+              <label class="block text-xs text-slate-300 font-medium mb-1">Target Packaging Architecture</label>
+              <select id="encodeTargetMode" onchange="app.compileReadableToBrarchive()" class="w-full bg-bedrock-950 border border-bedrock-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500">
+                <option value="pack_mirror">Full Bedrock Pack (__brarchive/&lt;dir&gt;.brarchive mirror)</option>
+                <option value="single_archive">Single Standalone .brarchive Container</option>
+              </select>
+            </div>
+
+            <div id="singleArchiveNameWrap" class="hidden">
+              <label class="block text-xs text-slate-300 font-medium mb-1">Output Archive Filename</label>
+              <input id="inputSingleArchiveName" type="text" value="bundle.brarchive" oninput="app.compileReadableToBrarchive()" class="w-full bg-bedrock-950 border border-bedrock-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200" />
+            </div>
+
+            <div class="space-y-2.5 pt-1 text-xs text-slate-300">
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="chkEncodeDedup" onchange="app.compileReadableToBrarchive()" class="mt-0.5 rounded bg-bedrock-950 border-bedrock-600 text-emerald-500" />
+                <div>
+                  <div class="font-medium text-slate-200">Enable Payload Deduplication (Non-Official)</div>
+                  <div class="text-[11px] text-slate-400">Identical file contents share the same offset &amp; length in the Content Section. The official optimizer does NOT deduplicate - keep this off for byte-exact official output.</div>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="chkEncodeMinifyJson" checked onchange="app.compileReadableToBrarchive()" class="mt-0.5 rounded bg-bedrock-950 border-bedrock-600 text-emerald-500" />
+                <div>
+                  <div class="font-medium text-slate-200">Minify JSON Payloads Before Packing</div>
+                  <div class="text-[11px] text-slate-400">Strips whitespace/comments on valid UTF-8 JSON to minimize archive size.</div>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5">
+                <input type="checkbox" id="chkEncodeSkipRootMeta" checked disabled class="mt-0.5 rounded bg-bedrock-950 border-bedrock-600 text-emerald-500" />
+                <div>
+                  <div class="font-medium text-slate-200">Keep Root <code class="font-mono text-emerald-400">manifest.json</code> & <code class="font-mono text-emerald-400">pack_icon.png</code> Loose <span class="text-emerald-400">(always on)</span></div>
+                  <div class="text-[11px] text-slate-400">Required by Minecraft Bedrock so the engine can discover pack UUIDs before mounting <code class="font-mono">__brarchive/</code>. The manifest is automatically stamped with <code class="font-mono">pack_optimization_version</code>.</div>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="chkEncodeIndexNonJson" checked onchange="app.compileReadableToBrarchive()" class="mt-0.5 rounded bg-bedrock-950 border-bedrock-600 text-emerald-500" />
+                <div>
+                  <div class="font-medium text-slate-200">Keep materials/ &amp; texts/ Loose with 0-Byte Index Entries</div>
+                  <div class="text-[11px] text-slate-400">Official optimizer behavior: <code class="font-mono">materials/</code> and <code class="font-mono">texts/*.lang</code> stay on disk byte-for-byte while their archives hold name-only <code class="font-mono">length=0</code> index entries; <code class="font-mono">texts/*.json</code> are embedded minified with a minified loose copy. Everything else (textures, models, ...) is embedded.</div>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="chkEncodeArchiveSubpacks" onchange="app.compileReadableToBrarchive()" checked class="mt-0.5 rounded bg-bedrock-950 border-bedrock-600 text-emerald-500" />
+                <div>
+                  <div class="font-medium text-slate-200">Also Archive <code class="font-mono text-emerald-400">subpacks/</code> (Official Behavior)</div>
+                  <div class="text-[11px] text-slate-400">The official optimizer archives subpack contents into <code class="font-mono">subpacks/&lt;name&gt;/__brarchive/</code>; subpack root-level files stay loose. Uncheck only if you hit subpack-switching issues in game.</div>
+                </div>
+              </label>
+            </div>
+
+            <div class="rounded-lg bg-bedrock-950/80 border border-emerald-500/20 p-3 text-[11px] text-slate-400 leading-relaxed">
+              No Windows PC or Bedrock server file needed - this compiles the same <code class="font-mono">__brarchive/</code> layout as Mojang's official 1.26.40+ pack optimizer, entirely on your device (phone, tablet, Linux, anything with a browser). Your files never leave the device.
+            </div>
+
+            <div class="pt-3 border-t border-bedrock-800 flex flex-wrap gap-2">
+              <button onclick="app.compileReadableToBrarchive()" class="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition shadow-lg">
+                Compile to Verified .brarchive (v1)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Compiled Output Archives & Descriptor Table Inspector (7 cols) -->
+        <div class="lg:col-span-7 rounded-xl bg-bedrock-900/95 border border-bedrock-700 p-4 flex flex-col justify-between pixel-border">
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-bedrock-800 pb-3 mb-4">
+              <div>
+                <h3 class="text-sm sm:text-base font-semibold text-white">Compiled <code class="text-emerald-400 font-mono">.brarchive</code> Output</h3>
+                <p id="encodeSummarySubtitle" class="text-xs text-slate-400">0 source files queued for compilation</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btnDownloadCompiledPack" onclick="app.downloadCompiledOutputPack()" disabled class="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 font-semibold text-xs sm:text-sm transition flex items-center gap-1.5">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Download Compiled Output</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Generated .brarchive List -->
+            <div id="compiledArchivesList" class="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+              <div class="p-8 text-center text-slate-500 border border-dashed border-bedrock-700 rounded-xl">
+                <p class="text-xs sm:text-sm text-slate-400">No compiled <code class="text-emerald-400 font-mono">.brarchive</code> containers yet.</p>
+                <p class="text-xs text-slate-500 mt-1">Click <strong>"Use Current Workspace Files"</strong> on the left (or load the sample pack first) to build verified binary archives.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Binary Footer Verification Note -->
+          <div class="mt-4 pt-3 border-t border-bedrock-800 flex flex-wrap items-center justify-between text-xs font-mono text-slate-400 gap-2">
+            <span>Header: 16B (magic 7D 27 25 B1 A0 52 70 26, count, v1)</span>
+            <span id="encodeDedupSavingsBadge" class="text-emerald-400">Deduplication saved: 0 B</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         TAB 3: AUTOMATED VALIDATION & TEST SUITE (10 REAL TESTS)
+         ===================================================================== -->
+    <section id="tabPanel-tests" class="hidden space-y-5">
+      <div class="rounded-xl bg-bedrock-900/95 border border-bedrock-700 p-5 pixel-border">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-bedrock-800 pb-4">
+          <div>
+            <span class="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold">In-Browser Verification Engine</span>
+            <h2 class="text-lg font-bold text-white mt-0.5">Automated Conversion & Security Validation Suite</h2>
+            <p class="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Executes 12 live binary assertions against <code class="font-mono text-slate-200">BRArchiveCodec</code>, <code class="font-mono text-slate-200">FormatDetector</code>, and <code class="font-mono text-slate-200">SecurityValidator</code>.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="testSuiteSummaryBadge" class="px-3 py-1.5 rounded-lg bg-bedrock-950 border border-bedrock-700 font-mono text-xs text-slate-300">
+              Ready to run
+            </div>
+            <button onclick="app.runAllAutomatedTests()" class="px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm transition shadow-lg flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Run All 10 Verification Tests</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 10 Test Cards Grid -->
+        <div id="testResultsGrid" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- Populated dynamically by app.runAllAutomatedTests() -->
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         TAB 4: BINARY SPECIFICATION, SECURITY CONFIG & GITHUB PAGES KIT
+         ===================================================================== -->
+    <section id="tabPanel-specs" class="hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        
+        <!-- Left 7 Cols: Binary Spec & Supported Variants -->
+        <div class="lg:col-span-7 space-y-4">
+          <div class="rounded-xl bg-bedrock-900/95 border border-bedrock-700 p-5 space-y-4 pixel-border">
+            <div class="flex items-center justify-between border-b border-bedrock-800 pb-3">
+              <h2 class="text-base sm:text-lg font-bold text-white">Verified <code class="text-emerald-400 font-mono">.brarchive</code> v1 Binary Specification</h2>
+              <span class="px-2 py-0.5 rounded text-xs font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Little-Endian</span>
+            </div>
+
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Minecraft Bedrock Edition uses <code class="font-mono text-emerald-300">__brarchive/*.brarchive</code> containers to coalesce thousands of small JSON definitions (entities, blocks, items, UI, render controllers) into contiguous binary blobs for fast sequential I/O.
+            </p>
+
+            <!-- Spec Table -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse font-mono text-xs">
+                <thead>
+                  <tr class="border-b border-bedrock-700 text-slate-400 bg-bedrock-950/60">
+                    <th class="p-2.5">Section</th>
+                    <th class="p-2.5">Byte Offset</th>
+                    <th class="p-2.5">Type</th>
+                    <th class="p-2.5">Description & Verification Rule</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-bedrock-800 text-slate-200">
+                  <tr>
+                    <td class="p-2.5 text-emerald-400 font-semibold">Header</td>
+                    <td class="p-2.5">0x00 .. 0x03</td>
+                    <td class="p-2.5">u32 LE</td>
+                    <td class="p-2.5">Magic Low: <code class="text-emerald-300">0xB125277D</code> (bytes: <code class="text-slate-400">7D 27 25 B1</code>)</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-emerald-400 font-semibold">Header</td>
+                    <td class="p-2.5">0x04 .. 0x07</td>
+                    <td class="p-2.5">u32 LE</td>
+                    <td class="p-2.5">Magic High: <code class="text-emerald-300">0x267052A0</code> (bytes: <code class="text-slate-400">A0 52 70 26</code>)</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-emerald-400 font-semibold">Header</td>
+                    <td class="p-2.5">0x08 .. 0x0B</td>
+                    <td class="p-2.5">u32 LE</td>
+                    <td class="p-2.5"><code class="text-amber-300">entry_count</code> (Number of 256B descriptors)</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-emerald-400 font-semibold">Header</td>
+                    <td class="p-2.5">0x0C .. 0x0F</td>
+                    <td class="p-2.5">u32 LE</td>
+                    <td class="p-2.5"><code class="text-amber-300">version</code> (Must equal <code class="text-emerald-300">1</code> / <code class="text-slate-400">0x00000001</code>)</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-sky-400 font-semibold">Descriptor[i]</td>
+                    <td class="p-2.5">+0x00 (1B)</td>
+                    <td class="p-2.5">u8</td>
+                    <td class="p-2.5">UTF-8 Entry Name Length (<code class="text-emerald-300">0..247</code>)</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-sky-400 font-semibold">Descriptor[i]</td>
+                    <td class="p-2.5">+0x01 .. 0xF7</td>
+                    <td class="p-2.5">char[247]</td>
+                    <td class="p-2.5">UTF-8 Entry Name, null-padded to 247 bytes</td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-sky-400 font-semibold">Descriptor[i]</td>
+                    <td class="p-2.5">+0xF8 .. 0xFB</td>
+                    <td class="p-2.5">u32 LE</td>
+                    <td class="p-2.5">Content offset relative to <code class="text-slate-300">16 + 256 * entry_count</code></td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-sky-400 font-semibold">Descriptor[i]</td>
+                    <td class="p-2.5">+0xFC .. 0xFF</td>
+                    <td class="p-2.5">u32 LE</td>
+                    <td class="p-2.5">Content byte length (<code class="text-slate-400">0 = index-only loose file ref</code>)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- MCB Binary Format Note -->
+            <div class="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs space-y-1">
+              <div class="font-semibold text-amber-300 flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Embedded Payload Variant: MCB Compiled Binary JSON (\x7FMCB)</span>
+              </div>
+              <p class="text-slate-300 leading-relaxed">
+                Some official first-party Bedrock <code class="font-mono">.brarchive</code> files store pre-serialized C++ Cereal binary blobs starting with magic <code class="font-mono text-amber-200">7F 4D 43 42</code> (<code class="font-mono">\x7FMCB</code>) followed by <code class="font-mono">u16 major, u16 minor, u32 patch</code>. Because Cereal streams omit field names and rely on compiled C++ struct layouts, this converter detects MCB payloads, inspects their version header, and preserves them byte-for-byte without false modification.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 5 Cols: Security Guard Limits & GitHub Repository Generator -->
+        <div class="lg:col-span-5 space-y-4">
+          <!-- Configurable Security Sandbox -->
+          <div class="rounded-xl bg-bedrock-900/95 border border-bedrock-700 p-5 space-y-3.5 pixel-border">
+            <h3 class="text-sm font-bold uppercase tracking-wider text-white border-b border-bedrock-800 pb-2.5">
+              Security & ZIP-Bomb Sandbox Limits
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block text-slate-400 mb-1">Max Total Extracted Size (MB)</label>
+                <input id="secMaxTotalMB" type="number" value="250" min="10" max="1024" onchange="app.updateSecurityConfig()" class="w-full bg-bedrock-950 border border-bedrock-700 rounded-lg px-3 py-1.5 font-mono text-slate-200" />
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">Max Entries per Archive</label>
+                <input id="secMaxEntries" type="number" value="25000" min="100" max="100000" onchange="app.updateSecurityConfig()" class="w-full bg-bedrock-950 border border-bedrock-700 rounded-lg px-3 py-1.5 font-mono text-slate-200" />
+              </div>
+            </div>
+
+            <ul class="text-xs text-slate-300 space-y-1.5 pt-1">
+              <li class="flex items-center gap-2"><span class="text-emerald-400">✔</span> Rejects ZIP Slip traversal (<code class="font-mono text-slate-400">../</code>, leading <code class="font-mono text-slate-400">/</code>, drive letters, null bytes)</li>
+              <li class="flex items-center gap-2"><span class="text-emerald-400">✔</span> Validates descriptor offsets (<code class="font-mono text-slate-400">offset + length &lt;= content_size</code>)</li>
+              <li class="flex items-center gap-2"><span class="text-emerald-400">✔</span> Never executes uploaded <code class="font-mono text-slate-400">.js</code>, <code class="font-mono text-slate-400">.ts</code>, or <code class="font-mono text-slate-400">.mcfunction</code> scripts</li>
+            </ul>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Session Conversion History Footer Panel -->
+    <section class="rounded-xl bg-bedrock-900/80 border border-bedrock-800 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Session Conversion & Verification Log (Local Memory Only)</span>
+        </h3>
+        <button onclick="app.clearHistoryLog()" class="text-[11px] text-slate-500 hover:text-slate-300 font-mono">Clear Log</button>
+      </div>
+      <div id="sessionHistoryList" class="max-h-28 overflow-y-auto font-mono text-xs space-y-1 text-slate-400">
+        <div class="text-slate-500">Session initialized. Ready for local conversion.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-3 sm:px-0"></div>
+
+  <!-- =========================================================================
+       APPLICATION ARCHITECTURE & VERIFIED BRARCHIVE V1 BINARY ENGINE
+       ========================================================================= -->
+  <script>
+    /**
+     * =========================================================================
+     * 1. SECURITY & PATH VALIDATOR MODULE (validators.js)
+     * Protects against ZIP Slip, path traversal, null bytes, and oversized bombs.
+     * =========================================================================
+     */
+    const SecurityValidator = {
+      config: {
+        maxTotalBytes: 250 * 1024 * 1024, // 250 MB default
+        maxEntries: 25000,
+        maxSingleFileBytes: 64 * 1024 * 1024
+      },
+
+      /**
+       * Validates a relative archive path against directory traversal and invalid tokens.
+       * @param {string} rawPath
+       * @returns {{ valid: boolean, normalized: string, reason?: string }}
+       */
+      validateArchivePath(rawPath) {
+        if (typeof rawPath !== 'string' || rawPath.length === 0) {
+          return { valid: false, normalized: '', reason: 'Empty or non-string file path' };
+        }
+        if (rawPath.includes('\0')) {
+          return { valid: false, normalized: '', reason: 'Null-byte injection detected in path' };
+        }
+        // Normalize backslashes to forward slashes
+        const unified = rawPath.replace(/\\/g, '/').trim();
+        if (unified.startsWith('/') || /^[a-zA-Z]:/.test(unified)) {
+          return { valid: false, normalized: '', reason: `Absolute or drive path rejected: "${rawPath}"` };
+        }
+        const segments = unified.split('/');
+        for (const seg of segments) {
+          if (seg === '..') {
+            return { valid: false, normalized: '', reason: `Path traversal (..) rejected: "${rawPath}"` };
+          }
+        }
+        const normalized = segments.filter(Boolean).join('/');
+        if (!normalized) {
+          return { valid: false, normalized: '', reason: 'Path resolves to empty root' };
+        }
+        return { valid: true, normalized };
+      },
+
+      /**
+       * Validates a 247-byte BRArchive entry name (must be a clean relative entry name without '../').
+       */
+      validateBrarchiveEntryName(name) {
+        const res = this.validateArchivePath(name);
+        if (!res.valid) return res;
+        const utf8Bytes = new TextEncoder().encode(res.normalized);
+        if (utf8Bytes.byteLength > 247) {
+          return {
+            valid: false,
+            normalized: res.normalized,
+            reason: `Entry name UTF-8 length (${utf8Bytes.byteLength}B) exceeds 247-byte descriptor limit`
+          };
+        }
+        return res;
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 2. FORMAT DETECTION MODULE (detect-format.js)
+     * Inspects magic signatures, headers, and distinguishes verified .brarchive v1,
+     * MCB compiled binary JSON, ZIP/.mcpack containers, and unsupported variants.
+     * =========================================================================
+     */
+    const FormatDetector = {
+      MAGIC_LOW: 0xB125277D,  // On-disk bytes: 7D 27 25 B1
+      MAGIC_HIGH: 0x267052A0, // On-disk bytes: A0 52 70 26
+      SUPPORTED_VERSION: 1,
+      MCB_MAGIC: 0x42434D7F,  // Bytes: 7F 4D 43 42 ("\x7FMCB")
+
+      /**
+       * Inspects a Uint8Array buffer and identifies its container/payload format.
+       * @param {Uint8Array} bytes
+       * @param {string} fileName
+       */
+      detectBuffer(bytes, fileName = '') {
+        if (!(bytes instanceof Uint8Array)) {
+          bytes = new Uint8Array(bytes);
+        }
+        const len = bytes.byteLength;
+
+        // 1. Check for Verified .brarchive Magic (16-byte minimum header)
+        if (len >= 8) {
+          const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          const magicLow = dv.getUint32(0, true);
+          const magicHigh = dv.getUint32(4, true);
+
+          if (magicLow === this.MAGIC_LOW && magicHigh === this.MAGIC_HIGH) {
+            if (len < 16) {
+              return {
+                format: 'brarchive_corrupt',
+                supported: false,
+                signatureHex: this.toHexSlice(bytes, 0, len),
+                reason: 'Truncated .brarchive header (fewer than 16 bytes)'
+              };
+            }
+            const entryCount = dv.getUint32(8, true);
+            const version = dv.getUint32(12, true);
+            if (version !== this.SUPPORTED_VERSION) {
+              return {
+                format: 'brarchive_unsupported_version',
+                supported: false,
+                version,
+                entryCount,
+                signatureHex: this.toHexSlice(bytes, 0, 16),
+                reason: `Unsupported .brarchive version v${version} (only v1 is verified)`
+              };
+            }
+            const expectedTableEnd = 16 + entryCount * 256;
+            if (len < expectedTableEnd) {
+              return {
+                format: 'brarchive_corrupt',
+                supported: false,
+                version,
+                entryCount,
+                signatureHex: this.toHexSlice(bytes, 0, 16),
+                reason: `Truncated descriptor table: header claims ${entryCount} entries (${expectedTableEnd}B minimum), but file is ${len}B`
+              };
+            }
+            return {
+              format: 'brarchive_v1',
+              supported: true,
+              version,
+              entryCount,
+              contentSectionOffset: expectedTableEnd,
+              signatureHex: '7D 27 25 B1 A0 52 70 26'
+            };
+          }
+        }
+
+        // 2. Check for ZIP / .mcpack / .mcaddon Magic (PK\x03\x04 or PK\x05\x06)
+        if (len >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B &&
+            ((bytes[2] === 0x03 && bytes[3] === 0x04) || (bytes[2] === 0x05 && bytes[3] === 0x06))) {
+          return {
+            format: 'zip_container',
+            supported: true,
+            signatureHex: this.toHexSlice(bytes, 0, 4)
+          };
+        }
+
+        // 3. Check for MCB Compiled Binary JSON (\x7FMCB)
+        if (len >= 4) {
+          const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          if (dv.getUint32(0, true) === this.MCB_MAGIC) {
+            let major = 0, minor = 0, patch = 0;
+            if (len >= 12) {
+              major = dv.getUint16(4, true);
+              minor = dv.getUint16(6, true);
+              patch = dv.getUint32(8, true);
+            }
+            return {
+              format: 'mcb_binary',
+              supported: true,
+              mcbVersion: `${major}.${minor}.${patch}`,
+              major,
+              minor,
+              patch,
+              signatureHex: '7F 4D 43 42 (\\x7FMCB)'
+            };
+          }
+        }
+
+        // 4. Check for PNG / OGG / TGA binary assets
+        if (len >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+          return { format: 'binary_png', supported: true, signatureHex: '89 50 4E 47' };
+        }
+        if (len >= 4 && bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+          return { format: 'binary_ogg', supported: true, signatureHex: '4F 67 67 53 (OggS)' };
+        }
+
+        // 5. If file has .brarchive extension or name but did NOT match the verified magic
+        if (fileName.toLowerCase().endsWith('.brarchive')) {
+          return {
+            format: 'brarchive_unknown_signature',
+            supported: false,
+            signatureHex: this.toHexSlice(bytes, 0, Math.min(8, len)),
+            reason: `File "${fileName}" does not match verified .brarchive magic (expected 7D 27 25 B1 A0 52 70 26, found ${this.toHexSlice(bytes, 0, Math.min(8, len))})`
+          };
+        }
+
+        // 6. Check if valid UTF-8 text (JSON, lang, mcfunction, material, js, ts)
+        if (this.isLikelyUtf8Text(bytes)) {
+          return {
+            format: 'utf8_text',
+            supported: true,
+            signatureHex: len > 0 ? this.toHexSlice(bytes, 0, Math.min(4, len)) : 'EMPTY'
+          };
+        }
+
+        return {
+          format: 'binary_asset',
+          supported: true,
+          signatureHex: this.toHexSlice(bytes, 0, Math.min(4, len))
+        };
+      },
+
+      isLikelyUtf8Text(bytes) {
+        if (bytes.byteLength === 0) return true;
+        const sampleLen = Math.min(bytes.byteLength, 4096);
+        for (let i = 0; i < sampleLen; i++) {
+          const b = bytes[i];
+          // Reject null bytes or raw control chars (except tab, LF, CR)
+          if (b === 0x00 || (b < 0x09) || (b > 0x0D && b < 0x20)) {
+            return false;
+          }
+        }
+        try {
+          new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, sampleLen));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+
+      toHexSlice(bytes, start, end) {
+        return Array.from(bytes.subarray(start, end))
+          .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+          .join(' ');
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 3. VERIFIED BRARCHIVE v1 CODEC (brarchive-to-readable.js & readable-to-brarchive.js)
+     * Implements exact binary decoding and encoding of .brarchive v1 containers.
+     * =========================================================================
+     */
+    const BRArchiveCodec = {
+      /**
+       * Decodes a verified .brarchive v1 binary buffer into its constituent entries.
+       * @param {Uint8Array} buffer
+       * @param {string} archiveRelPath - e.g. "__brarchive/entities.brarchive"
+       */
+      decode(buffer, archiveRelPath = 'archive.brarchive') {
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        const detection = FormatDetector.detectBuffer(bytes, archiveRelPath);
+
+        if (detection.format !== 'brarchive_v1') {
+          throw new Error(detection.reason || `Unsupported or corrupted .brarchive container (${detection.format})`);
+        }
+
+        const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const entryCount = dv.getUint32(8, true);
+        const version = dv.getUint32(12, true);
+
+        if (entryCount > SecurityValidator.config.maxEntries) {
+          throw new Error(`Archive entry count (${entryCount}) exceeds security limit (${SecurityValidator.config.maxEntries})`);
+        }
+
+        const contentSectionOffset = 16 + entryCount * 256;
+        const contentSectionLength = bytes.byteLength - contentSectionOffset;
+        const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+
+        // Determine target output prefix based on Bedrock __brarchive directory convention
+        const targetDirPrefix = this.resolveTargetDirectoryFromArchivePath(archiveRelPath);
+
+        const entries = [];
+        const offsetTracker = new Set();
+        let deduplicatedHits = 0;
+
+        for (let i = 0; i < entryCount; i++) {
+          const descOffset = 16 + i * 256;
+          const nameLen = bytes[descOffset];
+
+          if (nameLen > 247) {
+            throw new Error(`Corrupted descriptor #${i} in "${archiveRelPath}": name length ${nameLen} exceeds maximum 247`);
+          }
+
+          // Decode UTF-8 name from bytes [descOffset + 1 .. descOffset + 1 + nameLen]
+          const nameBytes = bytes.subarray(descOffset + 1, descOffset + 1 + nameLen);
+          let entryName = '';
+          try {
+            entryName = utf8Decoder.decode(nameBytes);
+          } catch {
+            throw new Error(`Invalid UTF-8 sequence in descriptor #${i} name inside "${archiveRelPath}"`);
+          }
+
+          const pathCheck = SecurityValidator.validateBrarchiveEntryName(entryName);
+          if (!pathCheck.valid) {
+            throw new Error(`Security rejection in "${archiveRelPath}" descriptor #${i}: ${pathCheck.reason}`);
+          }
+
+          const relContentOffset = dv.getUint32(descOffset + 248, true);
+          const contentByteLength = dv.getUint32(descOffset + 252, true);
+
+          if (relContentOffset + contentByteLength > contentSectionLength) {
+            throw new Error(
+              `Out-of-bounds payload slice in "${archiveRelPath}" entry "${entryName}": offset ${relContentOffset} + length ${contentByteLength} > content section (${contentSectionLength}B)`
+            );
+          }
+
+          const absOffset = contentSectionOffset + relContentOffset;
+          const payload = bytes.slice(absOffset, absOffset + contentByteLength);
+
+          if (contentByteLength > 0) {
+            const key = `${relContentOffset}:${contentByteLength}`;
+            if (offsetTracker.has(key)) deduplicatedHits++;
+            offsetTracker.add(key);
+          }
+
+          const payloadDetection = FormatDetector.detectBuffer(payload, entryName);
+          const extractedPath = targetDirPrefix ? `${targetDirPrefix}/${pathCheck.normalized}` : pathCheck.normalized;
+
+          entries.push({
+            index: i,
+            name: pathCheck.normalized,
+            extractedPath,
+            sourceArchive: archiveRelPath,
+            relContentOffset,
+            absOffset,
+            byteLength: contentByteLength,
+            isIndexOnly: contentByteLength === 0,
+            payloadFormat: payloadDetection.format,
+            mcbVersion: payloadDetection.mcbVersion || null,
+            data: payload
+          });
+        }
+
+        return {
+          archivePath: archiveRelPath,
+          targetDirPrefix,
+          version,
+          entryCount,
+          contentSectionOffset,
+          totalByteLength: bytes.byteLength,
+          deduplicatedHits,
+          entries
+        };
+      },
+
+      /**
+       * Encodes a list of entries into a verified .brarchive v1 binary Uint8Array.
+       * Sorts descriptors alphabetically by UTF-8 name per specification and supports deduplication.
+       * @param {Array<{ name: string, data: Uint8Array }>} rawEntries
+       * @param {{ deduplicate?: boolean, minifyJson?: boolean }} options
+       */
+      encode(rawEntries, options = {}) {
+        const deduplicate = options.deduplicate !== false;
+        const minifyJson = options.minifyJson === true;
+        const utf8Encoder = new TextEncoder();
+        const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+
+        if (rawEntries.length > SecurityValidator.config.maxEntries) {
+          throw new Error(`Cannot encode ${rawEntries.length} entries: exceeds limit (${SecurityValidator.config.maxEntries})`);
+        }
+
+        // Validate and normalize entry names, then sort alphabetically (codepoint/byte order)
+        const prepared = rawEntries.map((item) => {
+          const check = SecurityValidator.validateBrarchiveEntryName(item.name);
+          if (!check.valid) {
+            throw new Error(`Cannot pack entry "${item.name}": ${check.reason}`);
+          }
+          let payload = item.data instanceof Uint8Array ? item.data : new Uint8Array(item.data || 0);
+
+          // Optional JSON minification (only on valid UTF-8 JSON files, never on MCB binaries)
+          if (minifyJson && check.normalized.toLowerCase().endsWith('.json') && payload.byteLength > 0) {
+            const det = FormatDetector.detectBuffer(payload, check.normalized);
+            if (det.format === 'utf8_text') {
+              try {
+                let text = utf8Decoder.decode(payload);
+                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+                const minified = this.minifyJsonText(text);
+                JSON.parse(minified); // validity gate only - emitted bytes stay textual
+                payload = utf8Encoder.encode(minified);
+              } catch {
+                // Keep original bytes if JSON has syntax quirks
+              }
+            }
+          }
+
+          const nameBytes = utf8Encoder.encode(check.normalized);
+          return {
+            name: check.normalized,
+            nameBytes,
+            data: payload
+          };
+        });
+
+        // Sort alphabetically by entry name
+        prepared.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+        // Build content section with optional deduplication
+        const contentChunks = [];
+        const dedupMap = new Map(); // fingerprint -> { offset, length }
+        let currentContentOffset = 0;
+        let bytesSavedByDedup = 0;
+
+        const descriptors = prepared.map((entry) => {
+          const len = entry.data.byteLength;
+          if (len === 0) {
+            return {
+              name: entry.name,
+              nameBytes: entry.nameBytes,
+              offset: 0,
+              length: 0
+            };
+          }
+
+          if (deduplicate) {
+            const fingerprint = this.computePayloadFingerprint(entry.data);
+            const existing = dedupMap.get(fingerprint);
+            if (existing && existing.length === len && this.arraysEqual(existing.bytes, entry.data)) {
+              bytesSavedByDedup += len;
+              return {
+                name: entry.name,
+                nameBytes: entry.nameBytes,
+                offset: existing.offset,
+                length: len,
+                deduplicated: true
+              };
+            }
+            const record = { offset: currentContentOffset, length: len, bytes: entry.data };
+            dedupMap.set(fingerprint, record);
+          }
+
+          const assignedOffset = currentContentOffset;
+          contentChunks.push(entry.data);
+          currentContentOffset += len;
+
+          return {
+            name: entry.name,
+            nameBytes: entry.nameBytes,
+            offset: assignedOffset,
+            length: len,
+            deduplicated: false
+          };
+        });
+
+        const entryCount = descriptors.length;
+        const headerAndTableSize = 16 + entryCount * 256;
+        const totalSize = headerAndTableSize + currentContentOffset;
+
+        const outBuffer = new Uint8Array(totalSize);
+        const dv = new DataView(outBuffer.buffer);
+
+        // Write 16-byte Header
+        dv.setUint32(0, FormatDetector.MAGIC_LOW, true);  // 0xB125277D -> bytes 7D 27 25 B1
+        dv.setUint32(4, FormatDetector.MAGIC_HIGH, true); // 0x267052A0 -> bytes A0 52 70 26
+        dv.setUint32(8, entryCount, true);
+        dv.setUint32(12, FormatDetector.SUPPORTED_VERSION, true); // v1
+
+        // Write 256-byte Entry Descriptor Table
+        for (let i = 0; i < entryCount; i++) {
+          const d = descriptors[i];
+          const base = 16 + i * 256;
+          outBuffer[base] = d.nameBytes.byteLength; // u8 length (0..247)
+          outBuffer.set(d.nameBytes, base + 1);     // UTF-8 name (rest is already 0-padded)
+          dv.setUint32(base + 248, d.offset, true); // u32 LE relative content offset
+          dv.setUint32(base + 252, d.length, true); // u32 LE content length
+        }
+
+        // Write Content Section
+        let writeCursor = headerAndTableSize;
+        for (const chunk of contentChunks) {
+          outBuffer.set(chunk, writeCursor);
+          writeCursor += chunk.byteLength;
+        }
+
+        return {
+          bytes: outBuffer,
+          entryCount,
+          contentSectionOffset: headerAndTableSize,
+          contentByteLength: currentContentOffset,
+          bytesSavedByDedup,
+          descriptors
+        };
+      },
+
+      /**
+       * Maps a .brarchive file path to its extracted Bedrock directory path.
+       * Examples:
+       *   "__brarchive/sounds.brarchive" -> "sounds"
+       *   "__brarchive/textures/entity/banner.brarchive" -> "textures/entity/banner"
+       *   "__brarchive/__root__.brarchive" -> ""
+       *   "entities.brarchive" -> "entities"
+       */
+      resolveTargetDirectoryFromArchivePath(archivePath) {
+        const clean = archivePath.replace(/\\/g, '/').replace(/^\/+/, '');
+        let rel = clean;
+        const idx = clean.indexOf('__brarchive/');
+        let subpackPrefix = '';
+        if (idx > 0) {
+          // Official layout: subpack archives live at subpacks/<name>/__brarchive/...
+          subpackPrefix = clean.slice(0, idx).replace(/\/+$/, '');
+          rel = clean.slice(idx + '__brarchive/'.length);
+        } else if (idx === 0) {
+          rel = clean.slice('__brarchive/'.length);
+        }
+        if (rel.toLowerCase().endsWith('.brarchive')) {
+          rel = rel.slice(0, -'.brarchive'.length);
+        }
+        if (rel === '__root__' || rel === 'root' || rel === '') {
+          return subpackPrefix;
+        }
+        return subpackPrefix ? `${subpackPrefix}/${rel}` : rel;
+      },
+
+      /**
+       * Maps a readable directory path to its corresponding __brarchive/<path>.brarchive path.
+       */
+      resolveArchivePathFromDirectory(dirPath) {
+        const clean = (dirPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        if (!clean) {
+          return '__brarchive/__root__.brarchive';
+        }
+        // Official layout: a subpack is its own pack root -> subpacks/<name>/__brarchive/
+        const sp = clean.match(/^(subpacks\/[^\/]+)(?:\/(.*))?$/);
+        if (sp) {
+          return sp[2] ? `${sp[1]}/__brarchive/${sp[2]}.brarchive` : `${sp[1]}/__brarchive/__root__.brarchive`;
+        }
+        return `__brarchive/${clean}.brarchive`;
+      },
+
+      computePayloadFingerprint(bytes) {
+        // Fast FNV-1a 32-bit hash + byteLength key
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < bytes.byteLength; i++) {
+          hash ^= bytes[i];
+          hash = Math.imul(hash, 0x01000193);
+        }
+        return `${bytes.byteLength}:${hash >>> 0}`;
+      },
+
+      arraysEqual(a, b) {
+        if (a.byteLength !== b.byteLength) return false;
+        for (let i = 0; i < a.byteLength; i++) {
+          if (a[i] !== b[i]) return false;
+        }
+        return true;
+      },
+
+      stripJsonComments(str) {
+        // Safely strips // and /* */ comments outside of string literals (common in Bedrock JSONs)
+        return str.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => (g ? '' : m));
+      },
+
+      /**
+       * Official-optimizer style JSON minify: strips comments and insignificant
+       * whitespace WITHOUT re-serializing, so number literals (0.0 stays 0.0),
+       * key order and string bytes are preserved exactly as authored.
+       */
+      minifyJsonText(text) {
+        let out = '';
+        let inStr = false, esc = false, inLine = false, inBlock = false;
+        for (let i = 0; i < text.length; i++) {
+          const c = text[i], n = text[i + 1];
+          if (inLine) { if (c === '\n') inLine = false; continue; }
+          if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++; } continue; }
+          if (inStr) {
+            out += c;
+            if (esc) esc = false;
+            else if (c === '\\') esc = true;
+            else if (c === '"') inStr = false;
+            continue;
+          }
+          if (c === '"') { inStr = true; out += c; continue; }
+          if (c === '/' && n === '/') { inLine = true; i++; continue; }
+          if (c === '/' && n === '*') { inBlock = true; i++; continue; }
+          if (c === ' ' || c === '\t' || c === '\r' || c === '\n' || c === '\f' || c === '\v') continue;
+          out += c;
+        }
+        return out;
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 3.5 OFFICIAL PACK OPTIMIZER RULES (Minecraft Bedrock 1.26.40+)
+     * Replicates what Mojang's Bedrock Dedicated Server pack optimizer produces
+     * (verified byte-for-byte against BDS 1.26.51.1 output, Aura Outline 0.0.206):
+     * - one __brarchive/<dir>.brarchive per directory (bare filenames as entries);
+     *   directories with no direct files get a 16-byte empty archive
+     * - root-level files (manifest.json, pack_icon.png, ...) always stay loose
+     * - each subpack is its own pack root: subpacks/<name>/__brarchive/<dir>.brarchive,
+     *   subpack root-level files stay loose
+     * - only materials/ and texts/ stay path-resolved: materials/* and texts/*.lang
+     *   stay loose byte-for-byte with 0-byte index entries in the archive;
+     *   texts/*.json are embedded (minified) AND kept as a minified loose copy
+     * - everything else (textures/, models/, entity/, ...) is embedded in archives
+     * - JSON payloads are minified TEXTUALLY (number literals like 0.0 preserved)
+     * - manifest.json is minified and header is stamped with
+     *   pack_optimization_version "0.1.0" (appended last, source key order kept).
+     *   WITHOUT THAT FLAG THE ENGINE IGNORES __brarchive/ AND THE PACK LOADS EMPTY.
+     * =========================================================================
+     */
+    const PackOptimizerRules = {
+      PACK_OPTIMIZATION_VERSION: '0.1.0',
+      MIN_ENGINE_VERSION: [1, 26, 40],
+      ROOT_ALWAYS_LOOSE: ['manifest.json', 'pack_icon.png', 'blocks.json', 'contents.json'],
+      SPECIAL_LOOSE_DIRS: ['materials', 'texts'],
+
+      /** 'resources' | 'behavior' | 'unknown' from a parsed manifest object */
+      packTypeOf(manifest) {
+        try {
+          const modules = manifest && manifest.modules;
+          if (Array.isArray(modules) && modules.some(m => m && m.type === 'resources')) return 'resources';
+          if (Array.isArray(modules) && modules.length > 0) return 'behavior';
+        } catch { /* fall through */ }
+        return 'unknown';
+      },
+
+      compareVersion(a, b) {
+        for (let i = 0; i < 3; i++) {
+          const d = (a[i] || 0) - (b[i] || 0);
+          if (d !== 0) return d;
+        }
+        return 0;
+      },
+
+      parseSemVersion(v) {
+        if (Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every(n => Number.isInteger(n))) return v.slice(0, 3);
+        if (typeof v === 'string') {
+          const p = v.split('.').map(x => parseInt(x, 10));
+          if (p.length >= 3 && p.slice(0, 3).every(Number.isInteger)) return p.slice(0, 3);
+        }
+        return null;
+      },
+
+      /**
+       * Stamps header.pack_optimization_version into manifest.json text WITHOUT
+       * re-serializing: watermark comments and formatting are preserved byte-for-byte.
+       */
+      injectPackOptimizationVersion(manifestText, version = this.PACK_OPTIMIZATION_VERSION) {
+        const m = /"header"\s*:\s*\{/.exec(manifestText);
+        if (!m) throw new Error('manifest.json has no "header" object');
+        const objStart = m.index + m[0].length - 1; // index of '{'
+        // String/comment-aware scan to the matching closing brace.
+        let depth = 0, i = objStart, inStr = false, esc = false, inLine = false, inBlock = false;
+        for (; i < manifestText.length; i++) {
+          const c = manifestText[i], n = manifestText[i + 1];
+          if (inLine) { if (c === '\n') inLine = false; continue; }
+          if (inBlock) { if (c === '*' && n === '/') { inBlock = false; i++; } continue; }
+          if (inStr) { if (esc) { esc = false; } else if (c === '\\') { esc = true; } else if (c === '"') { inStr = false; } continue; }
+          if (c === '"') { inStr = true; continue; }
+          if (c === '/' && n === '/') { inLine = true; continue; }
+          if (c === '/' && n === '*') { inBlock = true; continue; }
+          if (c === '{') depth++;
+          else if (c === '}') { depth--; if (depth === 0) break; }
+        }
+        if (depth !== 0) throw new Error('manifest.json header object is not closed');
+        const headerBody = manifestText.slice(objStart + 1, i);
+        const existing = /"pack_optimization_version"\s*:\s*("[^"]*"|\[[^\]]*\])/.exec(headerBody);
+        if (existing) {
+          const absStart = objStart + 1 + existing.index;
+          const absEnd = absStart + existing[0].length;
+          return manifestText.slice(0, absStart) + `"pack_optimization_version": "${version}"` + manifestText.slice(absEnd);
+        }
+        return manifestText.slice(0, objStart + 1) + `\n    "pack_optimization_version": "${version}",` + manifestText.slice(objStart + 1);
+      },
+
+      /**
+       * Official optimizer manifest handling: textual minify (comments stripped,
+       * number literals and key order preserved) + pack_optimization_version
+       * appended as the LAST key of header (or value-replaced if already present).
+       */
+      minifyAndStampManifest(manifestText, version = this.PACK_OPTIMIZATION_VERSION) {
+        let text = manifestText;
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+        const minified = BRArchiveCodec.minifyJsonText(text);
+        JSON.parse(minified); // throws on invalid JSON - caller catches and warns
+        const m = /"header":\{/.exec(minified);
+        if (!m) throw new Error('manifest.json has no "header" object');
+        const objStart = m.index + m[0].length - 1; // index of '{'
+        let depth = 0, i = objStart, inStr = false, esc = false;
+        for (; i < minified.length; i++) {
+          const c = minified[i];
+          if (inStr) {
+            if (esc) esc = false;
+            else if (c === '\\') esc = true;
+            else if (c === '"') inStr = false;
+            continue;
+          }
+          if (c === '"') { inStr = true; continue; }
+          if (c === '{') depth++;
+          else if (c === '}') { depth--; if (depth === 0) break; }
+        }
+        if (depth !== 0) throw new Error('manifest.json header object is not closed');
+        const headerBody = minified.slice(objStart + 1, i);
+        const existing = /"pack_optimization_version":("[^"]*"|\[[^\]]*\])/.exec(headerBody);
+        if (existing) {
+          const absStart = objStart + 1 + existing.index;
+          const absEnd = absStart + existing[0].length;
+          return minified.slice(0, absStart) + `"pack_optimization_version":"${version}"` + minified.slice(absEnd);
+        }
+        return minified.slice(0, i) + `,"pack_optimization_version":"${version}"` + minified.slice(i);
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 4. SAMPLE BEDROCK ADD-ON GENERATOR (Real .brarchive v1 + MCB + Manifest)
+     * Builds a byte-accurate sample pack in memory so users can test immediately.
+     * =========================================================================
+     */
+    const SamplePackGenerator = {
+      buildVerifiedSamplePack() {
+        const enc = new TextEncoder();
+
+        // 1. Valid Bedrock manifest.json
+        const manifestJson = JSON.stringify({
+          format_version: 2,
+          header: {
+            name: "Obsidian Citadel Add-On (BRArchive Sample)",
+            description: "Verified sample pack containing real .brarchive v1 binary containers and an MCB binary UI definition.",
+            uuid: "8f4e2b10-6d3c-4a91-9e5b-1c2d3e4f5a6b",
+            version: [1, 21, 0],
+            min_engine_version: [1, 20, 80]
+          },
+          modules: [
+            {
+              type: "data",
+              uuid: "2a1b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d",
+              version: [1, 0, 0]
+            }
+          ]
+        }, null, 2);
+
+        // 2. Build __brarchive/entities.brarchive (with 2 entity JSONs)
+        const creeperEntity = JSON.stringify({
+          format_version: "1.20.80",
+          "minecraft:entity": {
+            description: {
+              identifier: "citadel:charged_sentinel",
+              is_spawnable: true,
+              is_summonable: true
+            },
+            components: {
+              "minecraft:health": { value: 60, max: 60 },
+              "minecraft:movement": { value: 0.28 },
+              "minecraft:explode": { fuse_length: 1.5, power: 4.0, causes_fire: false }
+            }
+          }
+        });
+
+        const golemEntity = JSON.stringify({
+          format_version: "1.20.80",
+          "minecraft:entity": {
+            description: {
+              identifier: "citadel:obsidian_golem",
+              is_spawnable: true,
+              is_summonable: true
+            },
+            components: {
+              "minecraft:health": { value: 150, max: 150 },
+              "minecraft:knockback_resistance": { value: 1.0 },
+              "minecraft:attack": { damage: 18 }
+            }
+          }
+        });
+
+        const entitiesArchive = BRArchiveCodec.encode([
+          { name: "charged_sentinel.entity.json", data: enc.encode(creeperEntity) },
+          { name: "obsidian_golem.entity.json", data: enc.encode(golemEntity) }
+        ], { deduplicate: true });
+
+        // 3. Build __brarchive/blocks.brarchive (demonstrating payload deduplication across two block variants + 0-length index ref)
+        const sharedBlockDef = JSON.stringify({
+          format_version: "1.20.80",
+          "minecraft:block": {
+            description: { identifier: "citadel:runic_obsidian" },
+            components: {
+              "minecraft:destructible_by_mining": { seconds_to_destroy: 12.5 },
+              "minecraft:light_emission": 12
+            }
+          }
+        });
+
+        const emeraldConduitDef = JSON.stringify({
+          format_version: "1.20.80",
+          "minecraft:block": {
+            description: { identifier: "citadel:emerald_conduit" },
+            components: {
+              "minecraft:destructible_by_mining": { seconds_to_destroy: 4.0 },
+              "minecraft:light_emission": 15
+            }
+          }
+        });
+
+        const blocksArchive = BRArchiveCodec.encode([
+          { name: "emerald_conduit.block.json", data: enc.encode(emeraldConduitDef) },
+          { name: "runic_obsidian.block.json", data: enc.encode(sharedBlockDef) },
+          { name: "runic_obsidian_alias.block.json", data: enc.encode(sharedBlockDef) }, // Deduplicated!
+          { name: "obsidian_atlas.png", data: new Uint8Array(0) } // 0-byte index reference to loose texture
+        ], { deduplicate: true });
+
+        // 4. Build nested __brarchive/ui/hud.brarchive (with standard JSON + Compiled MCB \x7FMCB binary payload)
+        const hudJson = JSON.stringify({
+          namespace: "hud",
+          hud_title_text: {
+            type: "label",
+            text: "Obsidian Citadel Server HUD",
+            color: [0.22, 0.9, 0.3],
+            shadow: true
+          }
+        });
+
+        // Construct a genuine MCB binary header (\x7FMCB + major=1, minor=21, patch=50 + cereal binary payload)
+        const mcbBytes = new Uint8Array(36);
+        const mcbDv = new DataView(mcbBytes.buffer);
+        mcbBytes.set([0x7F, 0x4D, 0x43, 0x42], 0); // \x7FMCB
+        mcbDv.setUint16(4, 1, true);  // major = 1
+        mcbDv.setUint16(6, 21, true); // minor = 21
+        mcbDv.setUint32(8, 50, true); // patch = 50
+        // Simulated Cereal binary tokens
+        mcbBytes.set(enc.encode("hud_compiled_cereal_node"), 12);
+
+        const uiHudArchive = BRArchiveCodec.encode([
+          { name: "hud_screen.json", data: enc.encode(hudJson) },
+          { name: "hud_compiled.json", data: mcbBytes }
+        ], { deduplicate: true });
+
+        // 5. Loose Bedrock files (functions, texts, textures)
+        const langText = "pack.name=Obsidian Citadel Add-On\npack.description=Verified BRArchive v1 Sample Pack\nentity.citadel:obsidian_golem.name=Obsidian Golem\n";
+        const mcFunctionText = "# Obsidian Citadel Tick Function\neffect @a[tag=citadel_warden] night_vision 15 0 true\n";
+
+        // Minimal valid 1x1 Emerald PNG
+        const minimalPng = new Uint8Array([
+          0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+          0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
+          0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x08,0xD7,0x63,0x68,0xF8,0xCF,0xC0,
+          0x00,0x00,0x02,0x07,0x01,0x02,0x9A,0x1C,0x3A,0x4E,0x00,0x00,0x00,0x00,0x49,0x45,
+          0x4E,0x44,0xAE,0x42,0x60,0x82
+        ]);
+
+        return [
+          { path: "manifest.json", bytes: enc.encode(manifestJson) },
+          { path: "pack_icon.png", bytes: minimalPng },
+          { path: "__brarchive/entities.brarchive", bytes: entitiesArchive.bytes },
+          { path: "__brarchive/blocks.brarchive", bytes: blocksArchive.bytes },
+          { path: "__brarchive/ui/hud.brarchive", bytes: uiHudArchive.bytes },
+          { path: "blocks/obsidian_atlas.png", bytes: minimalPng },
+          { path: "texts/en_US.lang", bytes: enc.encode(langText) },
+          { path: "functions/tick.mcfunction", bytes: enc.encode(mcFunctionText) }
+        ];
+      }
+    };
+
+    /**
+     * =========================================================================
+     * 5. MAIN APPLICATION CONTROLLER
+     * Manages UI state, file tree, editor, compiler, and automated test runner.
+     * =========================================================================
+     */
+    const app = {
+      activeTab: 'decode',
+      treeFilter: 'extracted', // 'extracted' | 'raw'
+      inspectorMode: 'text',   // 'text' | 'hex'
+      selectedFilePath: null,
+
+      // Workspace State (BRArchive -> Readable)
+      rawUploadedFiles: new Map(),     // path -> { path, bytes, formatInfo }
+      decodedArchives: [],             // Array of decoded .brarchive objects
+      extractedFiles: new Map(),       // path -> { path, bytes, sourceArchive, offset, isIndexOnly, payloadFormat, mcbVersion, edited }
+      securityViolations: 0,
+
+      // Compiler State (Readable -> BRArchive)
+      encoderSourceFiles: new Map(),   // path -> Uint8Array
+      compiledOutputs: [],             // Array of { archivePath, result }
+
+      init() {
+        this.setupDragAndDrop('decodeDropZone', (files) => this.handleDecodeFileInput(files));
+        this.setupDragAndDrop('encodeDropZone', (files) => this.handleEncodeFileInput(files));
+        this.runAllAutomatedTests(true); // Pre-populate test suite cards quietly
+      },
+
+      setupDragAndDrop(elementId, onFilesCallback) {
+        const zone = document.getElementById(elementId);
+        if (!zone) return;
+        ['dragenter', 'dragover'].forEach(evt => {
+          zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('drop-zone-active');
+          });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+          zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('drop-zone-active');
+          });
+        });
+        zone.addEventListener('drop', (e) => {
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            onFilesCallback(e.dataTransfer.files);
+          }
+        });
+      },
+
+      switchTab(tabId) {
+        this.activeTab = tabId;
+        ['decode', 'encode', 'tests', 'specs'].forEach(id => {
+          const panel = document.getElementById(`tabPanel-${id}`);
+          const btn = document.getElementById(`tabBtn-${id}`);
+          if (id === tabId) {
+            panel.classList.remove('hidden');
+            btn.classList.add('border-emerald-400', 'text-emerald-300');
+            btn.classList.remove('border-transparent', 'text-slate-400');
+          } else {
+            panel.classList.add('hidden');
+            btn.classList.remove('border-emerald-400', 'text-emerald-300');
+            btn.classList.add('border-transparent', 'text-slate-400');
+          }
+        });
+      },
+
+      showProgress(label, percent) {
+        const container = document.getElementById('progressContainer');
+        const bar = document.getElementById('progressBar');
+        const text = document.getElementById('progressLabel');
+        const pct = document.getElementById('progressPercent');
+        container.classList.remove('hidden');
+        text.textContent = label;
+        bar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+        pct.textContent = `${Math.round(percent)}%`;
+      },
+
+      hideProgress() {
+        setTimeout(() => {
+          document.getElementById('progressContainer').classList.add('hidden');
+        }, 350);
+      },
+
+      notify(message, type = 'success') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        const colors = {
+          success: 'bg-bedrock-900 border-emerald-500/60 text-emerald-200',
+          error: 'bg-red-950/95 border-red-500/70 text-red-200',
+          warn: 'bg-amber-950/95 border-amber-500/70 text-amber-200'
+        };
+        toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-xl text-xs sm:text-sm font-medium flex items-start justify-between gap-3 transition-all ${colors[type] || colors.success}`;
+        toast.innerHTML = `
+          <div class="leading-snug">${this.escapeHtml(message)}</div>
+          <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-white text-xs font-mono">✕</button>
+        `;
+        container.appendChild(toast);
+        setTimeout(() => {
+          if (toast.parentElement) toast.remove();
+        }, 5000);
+      },
+
+      logHistory(eventText) {
+        const list = document.getElementById('sessionHistoryList');
+        const time = new Date().toLocaleTimeString();
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 text-slate-300';
+        row.innerHTML = `<span class="text-emerald-400">[${time}]</span> <span>${this.escapeHtml(eventText)}</span>`;
+        list.prepend(row);
+      },
+
+      clearHistoryLog() {
+        document.getElementById('sessionHistoryList').innerHTML = '<div class="text-slate-500">Log cleared.</div>';
+      },
+
+      clearWorkspace() {
+        this.rawUploadedFiles.clear();
+        this.decodedArchives = [];
+        this.extractedFiles.clear();
+        this.encoderSourceFiles.clear();
+        this.compiledOutputs = [];
+        this.selectedFilePath = null;
+        this.securityViolations = 0;
+
+        document.getElementById('codeEditorTextarea').value = '';
+        document.getElementById('previewFilePath').textContent = 'Select a file from the explorer';
+        document.getElementById('previewFileBadge').textContent = 'NONE';
+        document.getElementById('previewMetaBanner').classList.add('hidden');
+        document.getElementById('btnDownloadReadableZip').disabled = true;
+        document.getElementById('btnSendToEncoder').disabled = true;
+        document.getElementById('btnDownloadSingle').disabled = true;
+
+        this.updateTelemetryUI('Awaiting Input', '—');
+        this.renderFileTree();
+        this.renderCompiledOutputs();
+        this.logHistory('Cleared workspace memory.');
+        this.notify('Workspace cleared.', 'success');
+      },
+
+      /**
+       * Loads the verified sample pack containing real .brarchive v1 binaries + MCB payload.
+       */
+      async loadVerifiedSamplePack() {
+        try {
+          this.showProgress('Generating verified Bedrock sample pack in memory...', 25);
+          const sampleFiles = SamplePackGenerator.buildVerifiedSamplePack();
+          await this.ingestRawFileEntries(sampleFiles, 'ObsidianCitadel_SamplePack.mcpack');
+          this.switchTab('decode');
+          this.notify('Loaded verified Bedrock sample pack with 3 .brarchive v1 containers and 1 MCB binary!', 'success');
+        } catch (err) {
+          this.notify(`Sample pack error: ${err.message}`, 'error');
+        } finally {
+          this.hideProgress();
+        }
+      },
+
+      /**
+       * Handles user file or directory selection in Tab 1 (BRArchive -> Readable).
+       */
+      async handleDecodeFileInput(fileList) {
+        if (!fileList || fileList.length === 0) return;
+        this.showProgress('Reading uploaded files...', 15);
+        try {
+          const collected = [];
+          let totalBytes = 0;
+
+          for (let i = 0; i < fileList.length; i++) {
+            const file = fileList[i];
+            totalBytes += file.size;
+            if (totalBytes > SecurityValidator.config.maxTotalBytes) {
+              throw new Error(`Upload exceeds configured max total size (${Math.round(SecurityValidator.config.maxTotalBytes / 1048576)} MB)`);
+            }
+
+            const relPath = file.webkitRelativePath || file.name;
+            const buf = new Uint8Array(await file.arrayBuffer());
+            const det = FormatDetector.detectBuffer(buf, file.name);
+
+            // If a single container is a ZIP / .mcpack / .mcaddon, unpack its entries first
+            if (det.format === 'zip_container') {
+              this.showProgress(`Unpacking archive ${file.name}...`, 40);
+              const zip = await JSZip.loadAsync(buf);
+              const zipEntries = Object.keys(zip.files);
+              if (zipEntries.length > SecurityValidator.config.maxEntries) {
+                throw new Error(`ZIP entry count (${zipEntries.length}) exceeds max limit`);
+              }
+
+              for (const zPath of zipEntries) {
+                const zEntry = zip.files[zPath];
+                if (zEntry.dir) continue;
+                const pathCheck = SecurityValidator.validateArchivePath(zPath);
+                if (!pathCheck.valid) {
+                  this.securityViolations++;
+                  this.logHistory(`SECURITY BLOCKED: ${pathCheck.reason}`);
+                  continue;
+                }
+                const zBytes = await zEntry.async('uint8array');
+                totalBytes += zBytes.byteLength;
+                if (totalBytes > SecurityValidator.config.maxTotalBytes) {
+                  throw new Error('ZIP extraction exceeded maximum uncompressed size limit (ZIP Bomb Guard)');
+                }
+                collected.push({ path: pathCheck.normalized, bytes: zBytes });
+              }
+            } else {
+              const pathCheck = SecurityValidator.validateArchivePath(relPath);
+              if (!pathCheck.valid) {
+                this.securityViolations++;
+                throw new Error(`Security rejection: ${pathCheck.reason}`);
+              }
+              collected.push({ path: pathCheck.normalized, bytes: buf });
+            }
+          }
+
+          await this.ingestRawFileEntries(collected, fileList[0].name);
+        } catch (err) {
+          this.notify(err.message, 'error');
+          this.logHistory(`Error: ${err.message}`);
+        } finally {
+          this.hideProgress();
+        }
+      },
+
+      /**
+       * Processes a list of { path, bytes } entries, detects all .brarchive files,
+       * decodes verified v1 containers, and populates the readable workspace.
+       */
+      async ingestRawFileEntries(entries, label = 'Upload') {
+        this.rawUploadedFiles.clear();
+        this.decodedArchives = [];
+        this.extractedFiles.clear();
+
+        let primarySignature = '—';
+        let unsupportedErrors = [];
+
+        for (let i = 0; i < entries.length; i++) {
+          const { path, bytes } = entries[i];
+          const formatInfo = FormatDetector.detectBuffer(bytes, path);
+          this.rawUploadedFiles.set(path, { path, bytes, formatInfo });
+
+          if (formatInfo.format === 'brarchive_v1') {
+            primarySignature = '0x267052A0B125277D (v1)';
+            try {
+              const decoded = BRArchiveCodec.decode(bytes, path);
+              this.decodedArchives.push(decoded);
+            } catch (decodeErr) {
+              unsupportedErrors.push(`${path}: ${decodeErr.message}`);
+            }
+          } else if (formatInfo.format.startsWith('brarchive_')) {
+            primarySignature = formatInfo.signatureHex || 'Invalid Magic';
+            unsupportedErrors.push(formatInfo.reason || `Unsupported .brarchive in ${path}`);
+          } else {
+            // Preserve loose non-brarchive files (manifest.json, textures, sounds, lang)
+            this.extractedFiles.set(path, {
+              path,
+              bytes,
+              sourceArchive: null, // loose file
+              offset: null,
+              isIndexOnly: false,
+              payloadFormat: formatInfo.format,
+              mcbVersion: formatInfo.mcbVersion || null,
+              edited: false
+            });
+          }
+        }
+
+        // Materialize decoded .brarchive entries into extractedFiles
+        this.rebuildExtractedFromArchives();
+
+        const totalDecodedEntries = this.decodedArchives.reduce((acc, a) => acc + a.entryCount, 0);
+        if (unsupportedErrors.length > 0) {
+          this.updateTelemetryUI('Unsupported / Error', primarySignature);
+          this.notify(unsupportedErrors[0], 'error');
+          this.logHistory(`Rejected unsupported/corrupt archive: ${unsupportedErrors[0]}`);
+        } else if (this.decodedArchives.length > 0) {
+          this.updateTelemetryUI('Verified .brarchive v1', primarySignature);
+          this.logHistory(`Decoded ${this.decodedArchives.length} .brarchive container(s) (${totalDecodedEntries} entries) from ${label}`);
+        } else {
+          this.updateTelemetryUI('Readable Pack (0 .brarchive)', 'Standard ZIP / Loose');
+          this.logHistory(`Loaded ${this.extractedFiles.size} readable files from ${label} (no .brarchive binaries found)`);
+        }
+
+        document.getElementById('btnDownloadReadableZip').disabled = this.extractedFiles.size === 0;
+        document.getElementById('btnSendToEncoder').disabled = this.extractedFiles.size === 0;
+
+        this.renderFileTree();
+
+        // Auto-select the first extracted file from a .brarchive (or first file overall)
+        const firstFromBr = Array.from(this.extractedFiles.values()).find(f => f.sourceArchive && !f.isIndexOnly);
+        const firstAny = Array.from(this.extractedFiles.values())[0];
+        if (firstFromBr) {
+          this.selectFile(firstFromBr.path);
+        } else if (firstAny) {
+          this.selectFile(firstAny.path);
+        }
+      },
+
+      rebuildExtractedFromArchives() {
+        const prettyPrint = document.getElementById('chkPrettyJson')?.checked !== false;
+        const utf8Dec = new TextDecoder('utf-8', { fatal: true });
+        const utf8Enc = new TextEncoder();
+
+        for (const arch of this.decodedArchives) {
+          for (const entry of arch.entries) {
+            if (entry.isIndexOnly) {
+              // 0-byte index entry: if the loose binary file already exists at entry.extractedPath, annotate it
+              const existingLoose = this.extractedFiles.get(entry.extractedPath);
+              if (existingLoose) {
+                existingLoose.indexedInArchive = arch.archivePath;
+              } else {
+                this.extractedFiles.set(entry.extractedPath, {
+                  path: entry.extractedPath,
+                  bytes: new Uint8Array(0),
+                  sourceArchive: arch.archivePath,
+                  offset: entry.relContentOffset,
+                  isIndexOnly: true,
+                  payloadFormat: 'index_only_ref',
+                  mcbVersion: null,
+                  edited: false
+                });
+              }
+              continue;
+            }
+
+            let finalBytes = entry.data;
+            // Pretty-print UTF-8 JSON if enabled
+            if (prettyPrint && entry.payloadFormat === 'utf8_text' && entry.name.toLowerCase().endsWith('.json')) {
+              try {
+                const rawStr = utf8Dec.decode(entry.data);
+                const parsed = JSON.parse(BRArchiveCodec.stripJsonComments(rawStr));
+                finalBytes = utf8Enc.encode(JSON.stringify(parsed, null, 2));
+              } catch {
+                finalBytes = entry.data;
+              }
+            }
+
+            this.extractedFiles.set(entry.extractedPath, {
+              path: entry.extractedPath,
+              bytes: finalBytes,
+              rawOriginalBytes: entry.data,
+              sourceArchive: arch.archivePath,
+              offset: entry.relContentOffset,
+              absOffset: entry.absOffset,
+              isIndexOnly: false,
+              payloadFormat: entry.payloadFormat,
+              mcbVersion: entry.mcbVersion,
+              edited: false
+            });
+          }
+        }
+      },
+
+      refreshDecodedWorkspace() {
+        if (this.decodedArchives.length === 0) return;
+        this.rebuildExtractedFromArchives();
+        this.renderFileTree();
+        if (this.selectedFilePath && this.extractedFiles.has(this.selectedFilePath)) {
+          this.selectFile(this.selectedFilePath);
+        }
+      },
+
+      updateTelemetryUI(statusLabel, signatureText) {
+        const badge = document.getElementById('detectorStatusBadge');
+        badge.textContent = statusLabel;
+        if (statusLabel.includes('Verified')) {
+          badge.className = 'px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        } else if (statusLabel.includes('Unsupported') || statusLabel.includes('Error')) {
+          badge.className = 'px-2 py-0.5 rounded text-[11px] font-mono bg-red-500/20 text-red-300 border border-red-500/40';
+        } else {
+          badge.className = 'px-2 py-0.5 rounded text-[11px] font-mono bg-bedrock-800 text-slate-300';
+        }
+
+        const totalEntries = this.decodedArchives.reduce((sum, a) => sum + a.entryCount, 0);
+        let readableCount = 0;
+        let mcbCount = 0;
+        for (const f of this.extractedFiles.values()) {
+          if (f.payloadFormat === 'mcb_binary') mcbCount++;
+          else if (!f.isIndexOnly) readableCount++;
+        }
+
+        document.getElementById('statSignature').textContent = signatureText;
+        document.getElementById('statArchiveCount').textContent = `${this.decodedArchives.length} archive(s) (${totalEntries} entries)`;
+        document.getElementById('statFileBreakdown').textContent = `${readableCount} readable / ${mcbCount} MCB`;
+        document.getElementById('statSecurityGuard').textContent = `${this.securityViolations} violations`;
+        document.getElementById('badgeDecodeCount').textContent = String(this.extractedFiles.size);
+      },
+
+      setTreeFilter(mode) {
+        this.treeFilter = mode;
+        const btnAll = document.getElementById('treeFilterAll');
+        const btnRaw = document.getElementById('treeFilterRaw');
+        if (mode === 'extracted') {
+          btnAll.className = 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-medium';
+          btnRaw.className = 'px-2 py-0.5 rounded text-slate-400 hover:text-slate-200';
+        } else {
+          btnRaw.className = 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-medium';
+          btnAll.className = 'px-2 py-0.5 rounded text-slate-400 hover:text-slate-200';
+        }
+        this.renderFileTree();
+      },
+
+      renderFileTree() {
+        const container = document.getElementById('fileTreeContainer');
+        const query = (document.getElementById('inputTreeSearch')?.value || '').toLowerCase().trim();
+
+        const items = [];
+        if (this.treeFilter === 'extracted') {
+          for (const [path, info] of this.extractedFiles.entries()) {
+            if (query && !path.toLowerCase().includes(query)) continue;
+            items.push({
+              path,
+              size: info.bytes.byteLength,
+              tag: info.payloadFormat === 'mcb_binary' ? 'MCB' : info.isIndexOnly ? 'IDX' : info.sourceArchive ? 'BR' : 'LOOSE',
+              tagColor: info.payloadFormat === 'mcb_binary'
+                ? 'bg-amber-500/20 text-amber-300'
+                : info.isIndexOnly
+                  ? 'bg-slate-700 text-slate-300'
+                  : info.sourceArchive
+                    ? 'bg-emerald-500/20 text-emerald-300'
+                    : 'bg-sky-500/20 text-sky-300'
+            });
+          }
+        } else {
+          for (const [path, info] of this.rawUploadedFiles.entries()) {
+            if (query && !path.toLowerCase().includes(query)) continue;
+            items.push({
+              path,
+              size: info.bytes.byteLength,
+              tag: info.formatInfo.format === 'brarchive_v1' ? 'v1' : 'RAW',
+              tagColor: info.formatInfo.format === 'brarchive_v1' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-bedrock-700 text-slate-300'
+            });
+          }
+        }
+
+        items.sort((a, b) => a.path.localeCompare(b.path));
+
+        if (items.length === 0) {
+          container.innerHTML = `
+            <div class="p-6 text-center text-slate-500 text-xs font-sans">
+              No matching files in current view.
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = items.map(item => {
+          const isSelected = this.selectedFilePath === item.path;
+          const activeCls = isSelected
+            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+            : 'hover:bg-bedrock-800/70 border-transparent text-slate-300';
+          return `
+            <button onclick="app.selectFile('${this.escapeAttr(item.path)}')" class="w-full text-left px-2.5 py-1.5 rounded-lg border flex items-center justify-between gap-2 transition ${activeCls}">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-[10px] px-1.5 py-0.2 rounded font-semibold ${item.tagColor}">${item.tag}</span>
+                <span class="truncate" title="${this.escapeAttr(item.path)}">${this.escapeHtml(item.path)}</span>
+              </div>
+              <span class="text-[11px] text-slate-500 shrink-0">${this.formatBytes(item.size)}</span>
+            </button>
+          `;
+        }).join('');
+      },
+
+      selectFile(filePath) {
+        this.selectedFilePath = filePath;
+        this.renderFileTree();
+
+        const isRawMode = this.treeFilter === 'raw';
+        const fileObj = isRawMode ? this.rawUploadedFiles.get(filePath) : this.extractedFiles.get(filePath);
+        if (!fileObj) return;
+
+        document.getElementById('previewFilePath').textContent = filePath;
+        document.getElementById('btnDownloadSingle').disabled = false;
+
+        const banner = document.getElementById('previewMetaBanner');
+        const provText = document.getElementById('previewProvenanceText');
+        const valBadge = document.getElementById('previewValidationBadge');
+        banner.classList.remove('hidden');
+
+        const bytes = fileObj.bytes;
+        const det = FormatDetector.detectBuffer(bytes, filePath);
+
+        if (isRawMode) {
+          document.getElementById('previewFileBadge').textContent = det.format.toUpperCase();
+          provText.textContent = `Raw File (${this.formatBytes(bytes.byteLength)}) | Signature: ${det.signatureHex}`;
+          valBadge.textContent = det.supported ? 'Verified Format' : 'Unsupported';
+          this.setInspectorMode(det.format === 'utf8_text' ? 'text' : 'hex', true);
+        } else {
+          document.getElementById('previewFileBadge').textContent = (fileObj.payloadFormat || 'FILE').toUpperCase();
+          if (fileObj.sourceArchive) {
+            provText.textContent = `Extracted from ${fileObj.sourceArchive} (Rel Offset: 0x${(fileObj.offset || 0).toString(16).toUpperCase()}, ${this.formatBytes(bytes.byteLength)})`;
+          } else {
+            provText.textContent = `Loose Pack File (${this.formatBytes(bytes.byteLength)})`;
+          }
+
+          if (fileObj.payloadFormat === 'mcb_binary') {
+            valBadge.textContent = `MCB Binary v${fileObj.mcbVersion} (Preserved Byte-for-Byte)`;
+            valBadge.className = 'text-amber-300';
+            this.setInspectorMode('hex', true);
+          } else if (fileObj.isIndexOnly) {
+            valBadge.textContent = '0-Byte Index Reference';
+            valBadge.className = 'text-slate-400';
+            this.setInspectorMode('text', true);
+          } else if (det.format === 'utf8_text') {
+            valBadge.textContent = fileObj.edited ? 'Edited UTF-8 Text' : 'Verified UTF-8 Text';
+            valBadge.className = 'text-emerald-400';
+            this.setInspectorMode('text', true);
+          } else {
+            valBadge.textContent = `Binary Asset (${det.format})`;
+            valBadge.className = 'text-sky-400';
+            this.setInspectorMode('hex', true);
+          }
+        }
+      },
+
+      setInspectorMode(mode, skipRefresh = false) {
+        this.inspectorMode = mode;
+        const textPane = document.getElementById('inspectorTextPane');
+        const hexPane = document.getElementById('inspectorHexPane');
+        const btnText = document.getElementById('btnViewText');
+        const btnHex = document.getElementById('btnViewHex');
+
+        if (mode === 'text') {
+          textPane.classList.remove('hidden');
+          hexPane.classList.add('hidden');
+          btnText.className = 'px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 font-medium transition';
+          btnHex.className = 'px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition';
+        } else {
+          hexPane.classList.remove('hidden');
+          hexPane.classList.add('flex');
+          textPane.classList.add('hidden');
+          btnHex.className = 'px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 font-medium transition';
+          btnText.className = 'px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition';
+        }
+
+        this.renderInspectorContent();
+      },
+
+      renderInspectorContent() {
+        if (!this.selectedFilePath) return;
+        const isRawMode = this.treeFilter === 'raw';
+        const fileObj = isRawMode ? this.rawUploadedFiles.get(this.selectedFilePath) : this.extractedFiles.get(this.selectedFilePath);
+        if (!fileObj) return;
+
+        const bytes = fileObj.bytes;
+        const det = FormatDetector.detectBuffer(bytes, this.selectedFilePath);
+        const isJson = this.selectedFilePath.toLowerCase().endsWith('.json') && det.format === 'utf8_text';
+
+        // Toggle JSON helper buttons
+        document.getElementById('btnFormatJson').classList.toggle('hidden', !isJson || this.inspectorMode !== 'text');
+        document.getElementById('btnMinifyJson').classList.toggle('hidden', !isJson || this.inspectorMode !== 'text');
+        document.getElementById('btnSaveEdits').classList.toggle('hidden', isRawMode || det.format !== 'utf8_text' || this.inspectorMode !== 'text');
+
+        if (this.inspectorMode === 'text') {
+          const textarea = document.getElementById('codeEditorTextarea');
+          if (fileObj.isIndexOnly) {
+            textarea.value = `// [0-Byte Index Reference inside ${fileObj.sourceArchive}]\n// Length = 0 in the 256-byte descriptor table.\n// In Minecraft Bedrock, a 0-length entry references a non-JSON loose asset (${this.selectedFilePath}) on disk.`;
+            textarea.readOnly = true;
+          } else if (det.format === 'utf8_text') {
+            textarea.value = new TextDecoder('utf-8').decode(bytes);
+            textarea.readOnly = isRawMode;
+          } else {
+            textarea.value = `// Binary payload (${det.format}, ${bytes.byteLength} bytes).\n// Switch to the "Hex & Header" tab above to inspect the binary header and byte dump.\n// Binary files are preserved byte-for-byte without modification.`;
+            textarea.readOnly = true;
+          }
+        } else {
+          // Render Hex & Structure Card
+          const structCard = document.getElementById('binaryStructCard');
+          document.getElementById('hexByteLengthLabel').textContent = `${bytes.byteLength.toLocaleString()} bytes`;
+
+          if (det.format === 'brarchive_v1') {
+            const decoded = BRArchiveCodec.decode(bytes, this.selectedFilePath);
+            structCard.innerHTML = `
+              <div class="text-emerald-400 font-semibold">Verified .brarchive v1 Container Header (16 Bytes)</div>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1">
+                <div class="p-2 rounded bg-bedrock-950 border border-bedrock-800"><span class="text-slate-400 block">Magic Low (0x00)</span>0xB125277D (7D 27 25 B1)</div>
+                <div class="p-2 rounded bg-bedrock-950 border border-bedrock-800"><span class="text-slate-400 block">Magic High (0x04)</span>0x267052A0 (A0 52 70 26)</div>
+                <div class="p-2 rounded bg-bedrock-950 border border-bedrock-800"><span class="text-slate-400 block">Entry Count (0x08)</span>${decoded.entryCount} entries</div>
+                <div class="p-2 rounded bg-bedrock-950 border border-bedrock-800"><span class="text-slate-400 block">Content Offset</span>0x${decoded.contentSectionOffset.toString(16).toUpperCase()} (${decoded.contentSectionOffset}B)</div>
+              </div>
+            `;
+          } else if (det.format === 'mcb_binary') {
+            structCard.innerHTML = `
+              <div class="text-amber-300 font-semibold">MCB Compiled Binary JSON Header (\\x7FMCB)</div>
+              <div class="text-slate-300 text-[11px] leading-relaxed">
+                Magic: <code class="text-amber-200">7F 4D 43 42</code> | Schema Version: <code class="text-emerald-300">v${det.mcbVersion}</code> (Major=${det.major}, Minor=${det.minor}, Patch=${det.patch}).
+                MCB files are schema-less C++ Cereal binary streams and are preserved byte-for-byte.
+              </div>
+            `;
+          } else {
+            structCard.innerHTML = `
+              <div class="text-slate-200 font-semibold">Binary Inspector — ${this.escapeHtml(det.format)}</div>
+              <div class="text-slate-400 text-[11px]">Leading Bytes: ${det.signatureHex}</div>
+            `;
+          }
+
+          document.getElementById('hexDumpOutput').textContent = this.generateHexDump(bytes, 2048);
+        }
+      },
+
+      formatActiveEditorJson(minify = false) {
+        const textarea = document.getElementById('codeEditorTextarea');
+        try {
+          const parsed = JSON.parse(BRArchiveCodec.stripJsonComments(textarea.value));
+          textarea.value = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
+          this.notify(minify ? 'JSON minified.' : 'JSON formatted (2 spaces).', 'success');
+        } catch (err) {
+          this.notify(`Invalid JSON syntax: ${err.message}`, 'error');
+        }
+      },
+
+      saveActiveFileEdits() {
+        if (!this.selectedFilePath || !this.extractedFiles.has(this.selectedFilePath)) return;
+        const textarea = document.getElementById('codeEditorTextarea');
+        const newText = textarea.value;
+
+        if (this.selectedFilePath.toLowerCase().endsWith('.json')) {
+          try {
+            JSON.parse(BRArchiveCodec.stripJsonComments(newText));
+          } catch (err) {
+            this.notify(`Cannot save invalid JSON: ${err.message}`, 'error');
+            return;
+          }
+        }
+
+        const entry = this.extractedFiles.get(this.selectedFilePath);
+        entry.bytes = new TextEncoder().encode(newText);
+        entry.edited = true;
+        this.renderFileTree();
+        this.logHistory(`Saved in-browser edits to ${this.selectedFilePath} (${entry.bytes.byteLength}B)`);
+        this.notify(`Saved changes to ${this.selectedFilePath}`, 'success');
+      },
+
+      downloadActiveFile() {
+        if (!this.selectedFilePath) return;
+        const isRawMode = this.treeFilter === 'raw';
+        const fileObj = isRawMode ? this.rawUploadedFiles.get(this.selectedFilePath) : this.extractedFiles.get(this.selectedFilePath);
+        if (!fileObj) return;
+
+        const baseName = this.selectedFilePath.split('/').pop() || 'extracted_file';
+        this.triggerBlobDownload(new Blob([fileObj.bytes]), baseName);
+        this.logHistory(`Downloaded individual file: ${baseName}`);
+      },
+
+      async downloadConvertedZip() {
+        if (this.extractedFiles.size === 0) return;
+        this.showProgress('Packaging readable Bedrock archive...', 35);
+        try {
+          const zip = new JSZip();
+          const stripBrarchive = document.getElementById('chkStripBrarchiveOnZip')?.checked !== false;
+          const ext = document.getElementById('selectExportExt')?.value || 'zip';
+
+          for (const [path, info] of this.extractedFiles.entries()) {
+            if (info.isIndexOnly) continue; // Do not write 0-byte index placeholders over real files
+            zip.file(path, info.bytes);
+          }
+
+          if (!stripBrarchive) {
+            for (const [rawPath, rawInfo] of this.rawUploadedFiles.entries()) {
+              if (rawInfo.formatInfo.format === 'brarchive_v1') {
+                zip.file(rawPath, rawInfo.bytes);
+              }
+            }
+          }
+
+          const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, (meta) => {
+            this.showProgress('Compressing readable archive...', 35 + meta.percent * 0.65);
+          });
+
+          const fileName = `bedrock_readable_pack.${ext}`;
+          this.triggerBlobDownload(blob, fileName);
+          this.logHistory(`Exported readable archive: ${fileName} (${this.extractedFiles.size} files)`);
+          this.notify(`Downloaded ${fileName}`, 'success');
+        } catch (err) {
+          this.notify(`ZIP export error: ${err.message}`, 'error');
+        } finally {
+          this.hideProgress();
+        }
+      },
+
+      /**
+       * =====================================================================
+       * TAB 2 LOGIC: READABLE -> BRARCHIVE COMPILER
+       * =====================================================================
+       */
+      transferToEncoder() {
+        this.importFromDecodedWorkspace();
+        this.switchTab('encode');
+      },
+
+      importFromDecodedWorkspace() {
+        if (this.extractedFiles.size === 0) {
+          this.notify('No files in current workspace yet. Load the sample pack first!', 'warn');
+          return;
+        }
+        this.encoderSourceFiles.clear();
+        for (const [path, info] of this.extractedFiles.entries()) {
+          if (info.isIndexOnly) continue;
+          this.encoderSourceFiles.set(path, info.bytes);
+        }
+        this.compileReadableToBrarchive();
+        this.notify(`Imported ${this.encoderSourceFiles.size} readable files into BRArchive Compiler.`, 'success');
+      },
+
+      async handleEncodeFileInput(fileList) {
+        if (!fileList || fileList.length === 0) return;
+        this.showProgress('Loading readable source files...', 25);
+        try {
+          this.encoderSourceFiles.clear();
+          let skippedBrarchive = 0;
+          for (let i = 0; i < fileList.length; i++) {
+            const file = fileList[i];
+            const buf = new Uint8Array(await file.arrayBuffer());
+            const det = FormatDetector.detectBuffer(buf, file.name);
+
+            if (det.format === 'zip_container') {
+              const zip = await JSZip.loadAsync(buf);
+              for (const zPath of Object.keys(zip.files)) {
+                const zEntry = zip.files[zPath];
+                if (zEntry.dir) continue;
+                const check = SecurityValidator.validateArchivePath(zPath);
+                if (!check.valid) continue;
+                if (check.normalized.startsWith('__brarchive/')) { skippedBrarchive++; continue; } // Skip existing binaries
+                this.encoderSourceFiles.set(check.normalized, await zEntry.async('uint8array'));
+              }
+            } else {
+              const rel = file.webkitRelativePath || file.name;
+              const check = SecurityValidator.validateArchivePath(rel);
+              if (check.valid) {
+                this.encoderSourceFiles.set(check.normalized, buf);
+              }
+            }
+          }
+          this.compileReadableToBrarchive();
+          this.notify(`Loaded ${this.encoderSourceFiles.size} source files for .brarchive compilation.`, 'success');
+          if (skippedBrarchive > 0) {
+            this.notify(`Input already contains ${skippedBrarchive} __brarchive/ binaries (skipped). To re-optimize an optimized pack, unpack it in the BRArchive -> Readable tab first.`, 'warn');
+            this.logHistory(`Skipped ${skippedBrarchive} pre-existing __brarchive/ binaries on source load.`);
+          }
+        } catch (err) {
+          this.notify(`Source load failed: ${err.message}`, 'error');
+        } finally {
+          this.hideProgress();
+        }
+      },
+
+      compileReadableToBrarchive() {
+        const mode = document.getElementById('encodeTargetMode').value;
+        document.getElementById('singleArchiveNameWrap').classList.toggle('hidden', mode !== 'single_archive');
+
+        if (this.encoderSourceFiles.size === 0) {
+          this.compiledOutputs = [];
+          this.renderCompiledOutputs();
+          return;
+        }
+
+        const deduplicate = document.getElementById('chkEncodeDedup').checked;
+        const minifyJson = document.getElementById('chkEncodeMinifyJson').checked;
+        const skipRootMeta = document.getElementById('chkEncodeSkipRootMeta').checked;
+        const indexNonJson = document.getElementById('chkEncodeIndexNonJson').checked;
+
+        this.compiledOutputs = [];
+        this.encoderPlan = null;
+        let totalDedupSaved = 0;
+
+        try {
+          if (mode === 'single_archive') {
+            let outName = (document.getElementById('inputSingleArchiveName').value || 'bundle.brarchive').trim();
+            if (!outName.endsWith('.brarchive')) outName += '.brarchive';
+
+            const entries = [];
+            for (const [path, bytes] of this.encoderSourceFiles.entries()) {
+              const baseName = path.split('/').pop();
+              if (skipRootMeta && !path.includes('/') && (baseName === 'manifest.json' || baseName === 'pack_icon.png')) {
+                continue;
+              }
+              entries.push({ name: baseName, data: bytes });
+            }
+
+            const encoded = BRArchiveCodec.encode(entries, { deduplicate, minifyJson });
+            totalDedupSaved += encoded.bytesSavedByDedup;
+            this.compiledOutputs.push({ archivePath: outName, result: encoded });
+          } else {
+            // Official pack-mirror mode: replicate the Bedrock 1.26.40+ server optimizer layout.
+            const manifestBytes = this.encoderSourceFiles.get('manifest.json') || null;
+            let manifestObj = null;
+            let manifestText = null;
+            if (manifestBytes) {
+              try {
+                manifestText = new TextDecoder('utf-8').decode(manifestBytes);
+                manifestObj = JSON.parse(BRArchiveCodec.stripJsonComments(manifestText));
+              } catch { manifestObj = null; manifestText = null; }
+            }
+            const packType = PackOptimizerRules.packTypeOf(manifestObj);
+            const archiveSubpacks = document.getElementById('chkEncodeArchiveSubpacks')?.checked === true;
+            const emitStubs = document.getElementById('chkEncodeIndexNonJson').checked;
+            const warnings = [];
+
+            if (!manifestBytes) {
+              warnings.push('No manifest.json found at pack root - Minecraft will not recognize the output as a pack.');
+            }
+            if (packType === 'unknown' && manifestBytes) {
+              warnings.push('Could not detect pack type from manifest modules; resource-pack keep-loose rules applied.');
+            }
+            if (manifestObj && manifestObj.header) {
+              const minEng = PackOptimizerRules.parseSemVersion(manifestObj.header.min_engine_version);
+              if (!minEng || PackOptimizerRules.compareVersion(minEng, PackOptimizerRules.MIN_ENGINE_VERSION) < 0) {
+                warnings.push(`manifest min_engine_version (${minEng ? minEng.join('.') : 'not declared'}) is below 1.26.40 - optimized packs only load on Minecraft 1.26.40+.`);
+              }
+            }
+
+            const groups = new Map(); // packRoot + '|' + relDir -> { packRoot, relDir, entries: Array<{ name, data }> }
+            const looseFiles = new Map(); // path -> bytes (written loose into the .mcpack)
+            const dirSets = new Map(); // packRoot -> Set(relDir) of every directory that exists in the source
+            let stubCount = 0;
+            let embeddedCount = 0;
+
+            const addToGroup = (packRoot, relDir, name, data) => {
+              const key = packRoot + '|' + relDir;
+              if (!groups.has(key)) groups.set(key, { packRoot, relDir, entries: [] });
+              groups.get(key).entries.push({ name, data });
+            };
+            const noteDir = (packRoot, relDir) => {
+              if (!dirSets.has(packRoot)) dirSets.set(packRoot, new Set());
+              const set = dirSets.get(packRoot);
+              let d = relDir;
+              while (d) {
+                set.add(d);
+                d = d.includes('/') ? d.slice(0, d.lastIndexOf('/')) : '';
+              }
+            };
+            const minifyPayload = (fileName, bytes) => {
+              if (!minifyJson || !fileName.toLowerCase().endsWith('.json') || bytes.byteLength === 0) return bytes;
+              try {
+                let text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+                const minified = BRArchiveCodec.minifyJsonText(text);
+                JSON.parse(minified);
+                return new TextEncoder().encode(minified);
+              } catch { return bytes; }
+            };
+
+            for (const [path, bytes] of this.encoderSourceFiles.entries()) {
+              const parts = path.split('/');
+              const fileName = parts.pop();
+              const dirPath = parts.join('/');
+
+              // Each subpack is its own pack root (official optimizer behavior):
+              // its files go to subpacks/<name>/__brarchive/, its root-level files stay loose.
+              let packRoot = '';
+              let relDir = dirPath;
+              if (parts[0] === 'subpacks') {
+                if (parts.length < 2 || !archiveSubpacks) {
+                  looseFiles.set(path, bytes);
+                  continue;
+                }
+                packRoot = 'subpacks/' + parts[1];
+                relDir = parts.slice(2).join('/');
+              }
+
+              if (relDir === '') {
+                // Root-level files (manifest.json, pack_icon.png, subpack READMEs, ...) always stay loose.
+                looseFiles.set(path, bytes);
+                continue;
+              }
+              noteDir(packRoot, relDir);
+
+              const topRel = relDir.split('/')[0];
+              if (PackOptimizerRules.SPECIAL_LOOSE_DIRS.includes(topRel)) {
+                if (topRel === 'texts' && fileName.toLowerCase().endsWith('.json')) {
+                  // Official: texts/*.json are embedded (minified) AND kept as a minified loose copy.
+                  const min = minifyPayload(fileName, bytes);
+                  addToGroup(packRoot, relDir, fileName, min);
+                  embeddedCount++;
+                  looseFiles.set(path, min);
+                } else if (emitStubs) {
+                  // Official: materials/* and texts/*.lang stay loose byte-for-byte,
+                  // with a 0-byte index entry inside the directory archive.
+                  looseFiles.set(path, bytes);
+                  addToGroup(packRoot, relDir, fileName, new Uint8Array(0));
+                  stubCount++;
+                } else {
+                  looseFiles.set(path, bytes);
+                }
+                continue;
+              }
+
+              addToGroup(packRoot, relDir, fileName, bytes);
+              embeddedCount++;
+            }
+
+            // Official: every directory that exists in the source gets an archive,
+            // even one with no direct files (16-byte empty container).
+            for (const [packRoot, dirs] of dirSets.entries()) {
+              for (const relDir of dirs) {
+                const key = packRoot + '|' + relDir;
+                if (!groups.has(key)) groups.set(key, { packRoot, relDir, entries: [] });
+              }
+            }
+            const sortedGroups = [...groups.values()].sort((a, b) => {
+              const pa = (a.packRoot ? a.packRoot + '/__brarchive/' : '__brarchive/') + a.relDir;
+              const pb = (b.packRoot ? b.packRoot + '/__brarchive/' : '__brarchive/') + b.relDir;
+              return pa < pb ? -1 : pa > pb ? 1 : 0;
+            });
+            for (const g of sortedGroups) {
+              const archivePath = g.packRoot
+                ? `${g.packRoot}/__brarchive/${g.relDir}.brarchive`
+                : `__brarchive/${g.relDir}.brarchive`;
+              const encoded = BRArchiveCodec.encode(g.entries, { deduplicate, minifyJson });
+              totalDedupSaved += encoded.bytesSavedByDedup;
+              this.compiledOutputs.push({ archivePath, result: encoded });
+            }
+
+            // Stamp the manifest the way the official optimizer does. Without this flag
+            // the 1.26.40+ engine ignores __brarchive/ entirely and the pack looks empty.
+            let manifestPatched = null;
+            if (manifestText !== null) {
+              try {
+                // Official optimizer minifies the manifest and appends the stamp last in header.
+                const stamped = minifyJson
+                  ? PackOptimizerRules.minifyAndStampManifest(manifestText)
+                  : PackOptimizerRules.injectPackOptimizationVersion(manifestText);
+                manifestPatched = new TextEncoder().encode(stamped);
+              } catch (stampErr) {
+                warnings.push(`Could not stamp manifest.json: ${stampErr.message}`);
+              }
+            }
+
+            let suggestedName = 'bedrock_brarchive_compiled.mcpack';
+            if (manifestObj && manifestObj.header && manifestObj.header.name) {
+              const safeName = String(manifestObj.header.name).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-');
+              const ver = manifestObj.header.version;
+              const verStr = Array.isArray(ver) ? ver.join('.') : (typeof ver === 'string' ? ver : '');
+              suggestedName = `${safeName || 'pack'}${verStr ? '-' + verStr : ''}-brarchive.mcpack`;
+            }
+
+            this.encoderPlan = {
+              packType, looseFiles, manifestPatched, warnings, suggestedName, stubCount, embeddedCount
+            };
+            for (const w of warnings) this.logHistory(`WARNING: ${w}`);
+          }
+
+          document.getElementById('encodeSummarySubtitle').textContent =
+            `${this.encoderSourceFiles.size} source files -> ${this.compiledOutputs.length} .brarchive container(s)` +
+            (this.encoderPlan ? ` | manifest stamped pack_optimization_version=${PackOptimizerRules.PACK_OPTIMIZATION_VERSION} | ${this.encoderPlan.embeddedCount} embedded / ${this.encoderPlan.stubCount} indexed / ${this.encoderPlan.looseFiles.size} loose` : '') +
+            (this.encoderPlan && this.encoderPlan.warnings.length ? ` | ${this.encoderPlan.warnings.length} warning(s)` : '');
+          document.getElementById('encodeDedupSavingsBadge').textContent =
+            `Deduplication saved: ${this.formatBytes(totalDedupSaved)}`;
+          document.getElementById('btnDownloadCompiledPack').disabled = this.compiledOutputs.length === 0;
+
+          this.renderCompiledOutputs();
+          this.logHistory(`Compiled ${this.compiledOutputs.length} .brarchive v1 container(s) (saved ${this.formatBytes(totalDedupSaved)} via deduplication)`);
+        } catch (err) {
+          this.notify(`Compilation error: ${err.message}`, 'error');
+        }
+      },
+
+      renderCompiledOutputs() {
+        const list = document.getElementById('compiledArchivesList');
+        if (this.compiledOutputs.length === 0) {
+          list.innerHTML = `
+            <div class="p-8 text-center text-slate-500 border border-dashed border-bedrock-700 rounded-xl">
+              <p class="text-xs sm:text-sm text-slate-400">No compiled <code class="text-emerald-400 font-mono">.brarchive</code> containers yet.</p>
+              <p class="text-xs text-slate-500 mt-1">Click <strong>"Use Current Workspace Files"</strong> on the left to build verified binary archives.</p>
+            </div>
+          `;
+          return;
+        }
+
+        list.innerHTML = this.compiledOutputs.map((item, idx) => {
+          const r = item.result;
+          const descRows = r.descriptors.map(d => `
+            <div class="flex items-center justify-between text-[11px] py-1 border-b border-bedrock-800/70 last:border-none">
+              <span class="text-slate-200 truncate">${this.escapeHtml(d.name)}</span>
+              <span class="text-slate-400 shrink-0">offset: 0x${d.offset.toString(16).toUpperCase()} | len: ${d.length}B ${d.deduplicated ? '<span class="text-emerald-400">(DEDUP)</span>' : d.length === 0 ? '<span class="text-amber-300">(INDEX)</span>' : ''}</span>
+            </div>
+          `).join('');
+
+          return `
+            <div class="p-3.5 rounded-xl bg-bedrock-950/90 border border-bedrock-700 space-y-2.5 font-mono">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span class="text-xs sm:text-sm font-semibold text-emerald-300">${this.escapeHtml(item.archivePath)}</span>
+                  <div class="text-[11px] text-slate-400">
+                    Total: ${this.formatBytes(r.bytes.byteLength)} | Entries: ${r.entryCount} | Content Section @ 0x${r.contentSectionOffset.toString(16).toUpperCase()}
+                  </div>
+                </div>
+                <button onclick="app.downloadSingleCompiledBrarchive(${idx})" class="px-2.5 py-1.5 rounded-lg bg-bedrock-800 hover:bg-emerald-600 hover:text-slate-950 text-emerald-300 border border-emerald-500/30 text-xs font-sans font-medium transition">
+                  Download .brarchive
+                </button>
+              </div>
+              <div class="p-2.5 rounded-lg bg-bedrock-900 border border-bedrock-800 max-h-36 overflow-y-auto">
+                ${descRows}
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+      downloadSingleCompiledBrarchive(index) {
+        const item = this.compiledOutputs[index];
+        if (!item) return;
+        const fileName = item.archivePath.split('/').pop() || 'output.brarchive';
+        this.triggerBlobDownload(new Blob([item.result.bytes]), fileName);
+        this.logHistory(`Downloaded binary container: ${fileName} (${item.result.bytes.byteLength}B)`);
+      },
+
+      async downloadCompiledOutputPack() {
+        if (this.compiledOutputs.length === 0) return;
+        if (this.compiledOutputs.length === 1 && document.getElementById('encodeTargetMode').value === 'single_archive') {
+          this.downloadSingleCompiledBrarchive(0);
+          return;
+        }
+
+        this.showProgress('Packaging compiled Bedrock pack with __brarchive/...', 40);
+        try {
+          const zip = new JSZip();
+          // Add all generated .brarchive files
+          for (const item of this.compiledOutputs) {
+            zip.file(item.archivePath, item.result.bytes);
+          }
+          const plan = this.encoderPlan;
+          // Stamped manifest first (header.pack_optimization_version makes the engine mount __brarchive/)
+          if (plan && plan.manifestPatched) {
+            zip.file('manifest.json', plan.manifestPatched);
+          }
+          // Add every file the official layout keeps loose (root-level files,
+          // materials/, texts/, and subpack root files)
+          const looseSource = plan ? plan.looseFiles : this.encoderSourceFiles;
+          for (const [path, bytes] of looseSource.entries()) {
+            if (path === 'manifest.json' && plan && plan.manifestPatched) continue; // already stamped
+            zip.file(path, bytes);
+          }
+
+          const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+          const outName = (plan && plan.suggestedName) || 'bedrock_brarchive_compiled.mcpack';
+          this.triggerBlobDownload(blob, outName);
+          this.logHistory(`Exported compiled pack ${outName} containing __brarchive/ containers + stamped manifest.`);
+          this.notify(`Downloaded ${outName}`, 'success');
+          if (plan && plan.warnings && plan.warnings.length > 0) {
+            this.notify(plan.warnings[0], 'warn');
+          }
+        } catch (err) {
+          this.notify(`Export failed: ${err.message}`, 'error');
+        } finally {
+          this.hideProgress();
+        }
+      },
+
+      /**
+       * =====================================================================
+       * TAB 3 LOGIC: 10 AUTOMATED VALIDATION & ROUND-TRIP UNIT TESTS
+       * =====================================================================
+       */
+      runAllAutomatedTests(silent = false) {
+        const enc = new TextEncoder();
+        const dec = new TextDecoder();
+        const tests = [
+          {
+            id: 'T01',
+            name: 'Valid .brarchive v1 Header & Descriptor Decoding',
+            run: () => {
+              const encoded = BRArchiveCodec.encode([
+                { name: 'entity_test.json', data: enc.encode('{"format_version":"1.20.0"}') }
+              ]);
+              const dv = new DataView(encoded.bytes.buffer);
+              if (dv.getUint32(0, true) !== FormatDetector.MAGIC_LOW || dv.getUint32(4, true) !== FormatDetector.MAGIC_HIGH) {
+                throw new Error('Header magic mismatch');
+              }
+              const decoded = BRArchiveCodec.decode(encoded.bytes, '__brarchive/entities.brarchive');
+              if (decoded.entryCount !== 1 || decoded.version !== 1) throw new Error('Invalid entry count or version');
+              return `Verified 16B header (7D 27 25 B1 / A0 52 70 26) + 256B descriptor`;
+            }
+          },
+          {
+            id: 'T02',
+            name: 'Corrupted Magic Signature Rejection',
+            run: () => {
+              const fakeBytes = new Uint8Array(32);
+              fakeBytes.set([0xDE, 0xAD, 0xBE, 0xEF], 0);
+              const det = FormatDetector.detectBuffer(fakeBytes, 'corrupt.brarchive');
+              if (det.supported) throw new Error('Corrupted magic was falsely marked supported');
+              return `Cleanly rejected invalid signature (${det.signatureHex})`;
+            }
+          },
+          {
+            id: 'T03',
+            name: 'Unsupported Format Version Rejection (v99)',
+            run: () => {
+              const buf = new Uint8Array(16);
+              const dv = new DataView(buf.buffer);
+              dv.setUint32(0, FormatDetector.MAGIC_LOW, true);
+              dv.setUint32(4, FormatDetector.MAGIC_HIGH, true);
+              dv.setUint32(8, 0, true);
+              dv.setUint32(12, 99, true); // Unsupported version 99
+              const det = FormatDetector.detectBuffer(buf, 'future.brarchive');
+              if (det.supported || det.format !== 'brarchive_unsupported_version') {
+                throw new Error('Failed to reject unsupported version 99');
+              }
+              return `Rejected unsupported version v${det.version} as required`;
+            }
+          },
+          {
+            id: 'T04',
+            name: 'Empty Archive (0 Entries, 16-Byte Header) Handling',
+            run: () => {
+              const emptyArc = BRArchiveCodec.encode([]);
+              if (emptyArc.bytes.byteLength !== 16) throw new Error(`Expected 16 bytes, got ${emptyArc.bytes.byteLength}`);
+              const decoded = BRArchiveCodec.decode(emptyArc.bytes, '__brarchive/empty.brarchive');
+              if (decoded.entries.length !== 0) throw new Error('Expected 0 decoded entries');
+              return `Encoded & decoded 0-entry 16-byte archive cleanly`;
+            }
+          },
+          {
+            id: 'T05',
+            name: 'Nested __brarchive/ Directory Mapping Convention',
+            run: () => {
+              const dir1 = BRArchiveCodec.resolveTargetDirectoryFromArchivePath('__brarchive/textures/entity/banner.brarchive');
+              const dirRoot = BRArchiveCodec.resolveTargetDirectoryFromArchivePath('__brarchive/__root__.brarchive');
+              if (dir1 !== 'textures/entity/banner') throw new Error(`Unexpected dir mapping: ${dir1}`);
+              if (dirRoot !== '') throw new Error(`Unexpected root mapping: ${dirRoot}`);
+              const dirSub = BRArchiveCodec.resolveTargetDirectoryFromArchivePath('subpacks/sp1/__brarchive/animations.brarchive');
+              if (dirSub !== 'subpacks/sp1/animations') throw new Error(`Unexpected subpack dir mapping: ${dirSub}`);
+              const archSub = BRArchiveCodec.resolveArchivePathFromDirectory('subpacks/sp1/animations');
+              if (archSub !== 'subpacks/sp1/__brarchive/animations.brarchive') throw new Error(`Unexpected subpack archive mapping: ${archSub}`);
+              return `Mapped banner.brarchive → textures/entity/banner/, __root__ → root & subpacks/sp1/__brarchive/ ↔ subpacks/sp1/`;
+            }
+          },
+          {
+            id: 'T06',
+            name: 'Large File & Payload Deduplication Verification',
+            run: () => {
+              const largePayload = new Uint8Array(131072); // 128 KB
+              for (let i = 0; i < largePayload.length; i++) largePayload[i] = i & 0xFF;
+              const compiled = BRArchiveCodec.encode([
+                { name: 'large_a.json', data: largePayload },
+                { name: 'large_b.json', data: largePayload }
+              ], { deduplicate: true });
+              if (compiled.bytesSavedByDedup !== 131072) throw new Error('Deduplication failed to share offset');
+              if (compiled.descriptors[0].offset !== compiled.descriptors[1].offset) throw new Error('Offsets do not match');
+              return `Deduplicated two 128 KB entries into shared offset 0x0 (saved 128 KB)`;
+            }
+          },
+          {
+            id: 'T07',
+            name: 'Unicode UTF-8 Entry Names & 247-Byte Boundary Guard',
+            run: () => {
+              const unicodeName = '日本語_ブロック_✨.json';
+              const encoded = BRArchiveCodec.encode([{ name: unicodeName, data: enc.encode('{}') }]);
+              const decoded = BRArchiveCodec.decode(encoded.bytes);
+              if (decoded.entries[0].name !== unicodeName) throw new Error('Unicode name mismatch after decode');
+              const overlong = 'a'.repeat(248) + '.json';
+              const check = SecurityValidator.validateBrarchiveEntryName(overlong);
+              if (check.valid) throw new Error('Failed to reject >247B entry name');
+              return `Preserved "${unicodeName}" & enforced 247-byte descriptor cap`;
+            }
+          },
+          {
+            id: 'T08',
+            name: 'Security Validation (ZIP Slip & Traversal Prevention)',
+            run: () => {
+              const trav1 = SecurityValidator.validateArchivePath('../../etc/passwd');
+              const trav2 = SecurityValidator.validateArchivePath('/abs/path.json');
+              const trav3 = SecurityValidator.validateArchivePath('valid\0evil.json');
+              if (trav1.valid || trav2.valid || trav3.valid) {
+                throw new Error('Security validator allowed unsafe path');
+              }
+              return `Blocked "../", absolute "/abs", and null-byte injection paths`;
+            }
+          },
+          {
+            id: 'T09',
+            name: 'Minecraft Pack Manifest & Binary MCB (\\x7FMCB) Preservation',
+            run: () => {
+              const mcbPayload = new Uint8Array([0x7F, 0x4D, 0x43, 0x42, 0x01, 0x00, 0x15, 0x00, 0x32, 0x00, 0x00, 0x00, 0xAA, 0xBB]);
+              const encoded = BRArchiveCodec.encode([{ name: 'hud_compiled.json', data: mcbPayload }], { minifyJson: true });
+              const decoded = BRArchiveCodec.decode(encoded.bytes);
+              const outEntry = decoded.entries[0];
+              if (outEntry.payloadFormat !== 'mcb_binary' || !BRArchiveCodec.arraysEqual(outEntry.data, mcbPayload)) {
+                throw new Error('MCB binary payload was altered during packing');
+              }
+              return `Detected \\x7FMCB v1.21.50 & preserved all ${mcbPayload.byteLength} bytes untouched`;
+            }
+          },
+          {
+            id: 'T10',
+            name: 'Bit-Exact Round-Trip Serialization Verification',
+            run: () => {
+              const originalEntries = [
+                { name: 'z_last.json', data: enc.encode('{"id":"z"}') },
+                { name: 'a_first.json', data: enc.encode('{"id":"a"}') },
+                { name: 'm_index.png', data: new Uint8Array(0) }
+              ];
+              const pass1 = BRArchiveCodec.encode(originalEntries, { deduplicate: true });
+              const unpacked = BRArchiveCodec.decode(pass1.bytes, '__brarchive/test.brarchive');
+              const pass2 = BRArchiveCodec.encode(
+                unpacked.entries.map(e => ({ name: e.name, data: e.data })),
+                { deduplicate: true }
+              );
+              if (!BRArchiveCodec.arraysEqual(pass1.bytes, pass2.bytes)) {
+                throw new Error('Round-trip binary output differs from initial serialization');
+              }
+              return `Bit-for-bit identical across ${pass1.bytes.byteLength} bytes (alphabetical descriptors verified)`;
+            }
+          },
+          {
+            id: 'T11',
+            name: 'Manifest Minify + pack_optimization_version Stamp (Official Style)',
+            run: () => {
+              const src = '// Tamilcrafters Studio\n{\n  "format_version": 3,\n  "header": {\n    "name": "Test Pack",\n    "uuid": "x",\n    "version": [1, 0, 0],\n    "min_engine_version": "1.26.40"\n  }\n}';
+              const stamped = PackOptimizerRules.minifyAndStampManifest(src);
+              if (stamped.includes('\n') || stamped.includes('//')) throw new Error('Manifest was not fully minified');
+              const parsed = JSON.parse(stamped);
+              if (parsed.header.pack_optimization_version !== PackOptimizerRules.PACK_OPTIMIZATION_VERSION) {
+                throw new Error('pack_optimization_version not stamped into header');
+              }
+              if (!/"min_engine_version":"1.26.40","pack_optimization_version"/.test(stamped)) {
+                throw new Error('Stamp was not appended as the last header key');
+              }
+              const restamped = PackOptimizerRules.minifyAndStampManifest(stamped);
+              if (restamped !== stamped) throw new Error('Re-stamp is not idempotent');
+              return `Minified one-line manifest, stamp appended last in header (v${parsed.header.pack_optimization_version}), idempotent re-stamp`;
+            }
+          },
+          {
+            id: 'T12',
+            name: 'Official Layout Rules (loose set + textual minify)',
+            run: () => {
+              const loose = PackOptimizerRules.SPECIAL_LOOSE_DIRS;
+              if (loose.length !== 2 || !loose.includes('materials') || !loose.includes('texts')) {
+                throw new Error('Official loose set must be exactly materials/ + texts/');
+              }
+              const min = BRArchiveCodec.minifyJsonText('{\n  "a": 0.0, // comment\n  "b": [1, 0.50, "x y"],\n  "c": -2.500e1\n}');
+              if (min !== '{"a":0.0,"b":[1,0.50,"x y"],"c":-2.500e1}') {
+                throw new Error('Textual minify altered literals or strings: ' + min);
+              }
+              JSON.parse(min);
+              if (PackOptimizerRules.packTypeOf({ modules: [{ type: 'resources' }] }) !== 'resources') throw new Error('RP type detection failed');
+              if (PackOptimizerRules.packTypeOf({ modules: [{ type: 'data' }] }) !== 'behavior') throw new Error('BP type detection failed');
+              return `Loose set = materials/ + texts/ only; minify preserves 0.0 / 0.50 / -2.500e1 literals and string spaces`;
+            }
+          }
+        ];
+
+        const grid = document.getElementById('testResultsGrid');
+        let passed = 0;
+        const startTotal = performance.now();
+
+        const cardsHtml = tests.map(t => {
+          const t0 = performance.now();
+          try {
+            const detail = t.run();
+            const elapsed = (performance.now() - t0).toFixed(2);
+            passed++;
+            return `
+              <div class="p-3.5 rounded-xl bg-bedrock-950/90 border border-emerald-500/30 flex flex-col justify-between gap-2">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-mono font-semibold text-emerald-400">[PASS] ${t.id}: ${this.escapeHtml(t.name)}</span>
+                  <span class="text-[11px] font-mono text-slate-500">${elapsed} ms</span>
+                </div>
+                <div class="text-xs font-mono text-slate-300">${this.escapeHtml(detail)}</div>
+              </div>
+            `;
+          } catch (err) {
+            return `
+              <div class="p-3.5 rounded-xl bg-red-950/40 border border-red-500/50 flex flex-col justify-between gap-2">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-mono font-semibold text-red-400">[FAIL] ${t.id}: ${this.escapeHtml(t.name)}</span>
+                </div>
+                <div class="text-xs font-mono text-red-200">${this.escapeHtml(err.message)}</div>
+              </div>
+            `;
+          }
+        }).join('');
+
+        const totalMs = (performance.now() - startTotal).toFixed(2);
+        grid.innerHTML = cardsHtml;
+        const summary = document.getElementById('testSuiteSummaryBadge');
+        summary.textContent = `${passed} / ${tests.length} Passed (${totalMs} ms)`;
+        summary.className = passed === tests.length
+          ? 'px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 font-mono text-xs text-emerald-300 font-semibold'
+          : 'px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 font-mono text-xs text-red-300 font-semibold';
+
+        if (!silent) {
+          this.logHistory(`Executed 10 automated validation tests: ${passed}/${tests.length} PASSED in ${totalMs} ms.`);
+          this.notify(`All ${passed}/${tests.length} automated verification tests passed!`, 'success');
+        }
+      },
+
+      updateSecurityConfig() {
+        const mb = parseInt(document.getElementById('secMaxTotalMB').value, 10) || 250;
+        const maxEnt = parseInt(document.getElementById('secMaxEntries').value, 10) || 25000;
+        SecurityValidator.config.maxTotalBytes = mb * 1024 * 1024;
+        SecurityValidator.config.maxEntries = maxEnt;
+        this.notify(`Updated sandbox limits: Max ${mb} MB, Max ${maxEnt} entries.`, 'success');
+      },
+
+      /**
+       * =====================================================================
+       * UTILITY HELPERS
+       * =====================================================================
+       */
+      generateHexDump(bytes, maxBytes = 2048) {
+        const limit = Math.min(bytes.byteLength, maxBytes);
+        const lines = [];
+        for (let offset = 0; offset < limit; offset += 16) {
+          const slice = bytes.subarray(offset, Math.min(offset + 16, limit));
+          const hexPart = Array.from(slice)
+            .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+            .join(' ')
+            .padEnd(16 * 3 - 1, ' ');
+          const asciiPart = Array.from(slice)
+            .map(b => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'))
+            .join('');
+          lines.push(`${offset.toString(16).padStart(8, '0').toUpperCase()}  ${hexPart}  |${asciiPart}|`);
+        }
+        if (bytes.byteLength > maxBytes) {
+          lines.push(`... (${(bytes.byteLength - maxBytes).toLocaleString()} additional bytes omitted in preview)`);
+        }
+        return lines.join('\n');
+      },
+
+      triggerBlobDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 250);
+      },
+
+      formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+      },
+
+      escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      },
+
+      escapeAttr(str) {
+        return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', () => app.init());
+  </script>
+  <footer class="text-center py-4 text-[11px] text-slate-500 font-mono">
+    Copyright (c) 2026 TamilCrafters Studio. All rights reserved.
+  </footer>
+</body>
+</html>
